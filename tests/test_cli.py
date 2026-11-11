@@ -272,10 +272,13 @@ def test_unknown_tokens_do_not_fail_the_command() -> None:
 
 
 def test_tokens_command() -> None:
-    result = runner.invoke(app, ["tokens"])
+    result = runner.invoke(app, ["tokens"], env={"COLUMNS": "200"})
     assert result.exit_code == 0
     for expected in ("Compression", "quantization-aware trained", "4b, 12B, 1.5b", "bartowski"):
         assert expected in result.output
+    for header in ("Token", "Meaning", "What it means"):
+        assert header in result.output
+    assert "\u250c" in result.output  # drawn as a grid table
     assert "(?P<" not in result.output  # examples are shown, never raw regexes
 
 

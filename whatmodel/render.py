@@ -274,18 +274,26 @@ def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
         entries = dictionary.entries_in(category.id)
         if not entries:
             continue
-        title = Text(category.heading, style="bold cyan")
-        title.append(f"  {category.id}", style="dim")
-        table = Table.grid(padding=(0, 2))
-        table.add_column(style="bold", overflow="fold", max_width=26)
-        table.add_column(overflow="fold")
+        table = Table(
+            title=f"{category.heading} ({category.id})",
+            title_style="bold",
+            title_justify="left",
+            caption=category.description,
+            caption_justify="left",
+            box=box.SQUARE,
+            show_lines=True,
+            header_style="bold",
+            border_style="dim",
+            expand=True,
+        )
+        table.add_column("Token", style="cyan", overflow="fold", min_width=18, max_width=28)
+        table.add_column("Meaning", overflow="fold", ratio=2)
+        table.add_column("What it means", style="dim", overflow="fold", ratio=5)
         for entry in entries:
             shown = entry.examples if entry.is_regex else entry.patterns
-            cell = Text(entry.label)
-            cell.append(f"\n{entry.explanation}", style="dim")
-            table.add_row(", ".join(shown), cell)
-        parts += [Text(), title, Text(category.description, style="dim"), table]
-    return Padding(Group(*parts), (0, 2, 1, 2))
+            table.add_row(", ".join(shown), entry.label, entry.explanation)
+        parts += [Text(), table]
+    return Padding(Group(*parts), (0, 0, 1, 0))
 
 
 def print_info(console: Console, info: ModelInfo, *, verbose: bool = False) -> None:
