@@ -1,0 +1,179 @@
+name: Release
+
+# Publishing a GitHub Release publishes that version to PyPI.
+# The tag is the only source of the version: tag v0.2.0 ships whatmodel 0.2.0.
+# Tags ending in rcN (v0.2.0rc1) go to TestPyPI only.
+#
+# Jobs run in order and each needs the one before it:
+#   check-tag -> test -> build -> publish-testpypi -> publish-pypi -> attach-assets
+#
+# Publishing uses PyPI Trusted Publishing (OIDC). There are no API tokens or
+# secrets. The publish jobs must stay in this file: PyPI does not accept
+# trusted publishing from a reusable workflow. See RELEASING.md for the
+# one-time setup on PyPI, TestPyPI and GitHub.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  check-tag:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      is_rc: ${{ steps.tag.outputs.is_rc }}
+    steps:
+      - name: Require vX.Y.Z or vX.Y.ZrcN
+        id: tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]; then
+            echo "::error::Tag '$TAG' is not vX.Y.Z or vX.Y.ZrcN. Nothing was built or published."
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *rc* ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Test
+    needs: check-tag
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build
+    needs: [check-tag, test]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check-tag.outputs.version }}
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # hatch-vcs reads the version from the tag
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Build the sdist and wheel
+        run: uv build
+
+      - name: Check that the built version matches the tag
+        run: |
+          ls -l dist
+          for file in "dist/whatmodel-${VERSION}.tar.gz" "dist/whatmodel-${VERSION}-py3-none-any.whl"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::Expected $file. The build did not produce version ${VERSION}."
+              exit 1
+            fi
+          done
+          if [[ "$(ls dist | wc -l)" -ne 2 ]]; then
+            echo "::error::dist/ should hold exactly one sdist and one wheel."
+            exit 1
+          fi
+
+      - name: Validate the metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Smoke test the wheel in a clean environment
+        run: |
+          wheel="dist/whatmodel-${VERSION}-py3-none-any.whl"
+          reported="$(uv run --isolated --no-project --with "$wheel" whatmodel --version)"
+          echo "$reported"
+          if [[ "$reported" != "whatmodel ${VERSION}" ]]; then
+            echo "::error::whatmodel --version printed '$reported', expected 'whatmodel ${VERSION}'."
+            exit 1
+          fi
+          uv run --isolated --no-project --with "$wheel" whatmodel qwen3.5:4b --offline
+
+      - name: Upload dist/
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/whatmodel
+    permissions:
+      id-token: write # trusted publishing; nothing else is granted
+    steps:
+      - name: Download the files built by the build job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Lets a failed release be re-run after TestPyPI already has the files.
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [check-tag, publish-testpypi]
+    if: needs.check-tag.outputs.is_rc == 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/whatmodel
+    permissions:
+      id-token: write # trusted publishing; nothing else is granted
+    steps:
+      - name: Download the files built by the build job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  attach-assets:
+    name: Attach files to the GitHub Release
+    needs: [publish-testpypi, publish-pypi]
+    # Runs after PyPI succeeds, and also for rc tags, where the PyPI job is skipped.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.publish-testpypi.result == 'success'
+        && (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to upload release assets
+    steps:
+      - name: Download the files built by the build job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload the sdist and wheel to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --clobber

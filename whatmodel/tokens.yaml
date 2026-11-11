@@ -1,0 +1,1101 @@
+# whatmodel token dictionary
+#
+# Every meaning whatmodel knows lives in this file. The code only knows how to
+# split a name into tokens and look each token up here, so you can teach it a
+# new token without touching any Python. CONTRIBUTING.md has a walkthrough.
+#
+# How matching works
+#   - Matching ignores case, and "-", "_" and "." all count as the same
+#     separator. A dot between two digits is a decimal point, so 3.5 stays whole.
+#   - A pattern must match a whole token. Multi-part patterns such as gpt-oss or
+#     q4_k_m match across separators.
+#   - A token that matches no entry is reported as unknown.
+#   - A token that matches two or more entries is reported as ambiguous, with
+#     every reading shown. Nothing is ever picked for the user.
+#
+# Entry fields
+#   pattern      required  A literal, or a list of literals that mean the same
+#                          thing. With "regex: true" it is a regular expression;
+#                          write "_" wherever the name has a separator.
+#   category     required  One of the ids under "categories".
+#   label        required  The short phrase shown in the output.
+#   explanation  required  One plain-English sentence.
+#   regex        optional  true when pattern is a regular expression.
+#   examples     regex     Tokens the pattern must match. Required for regex
+#                          entries: the tests check them, and "whatmodel tokens"
+#                          prints them instead of the raw regex.
+#   value        optional  Normalized value for JSON and the library. Defaults
+#                          to the literal as written here, or to the matched
+#                          token for a regex.
+#   after        optional  Only match directly after a token of this category.
+#   maker        optional  Family entries only: who makes the family.
+#   implies      optional  Facts in other categories that this token settles, as
+#                          "category: token". The token must be an entry of that
+#                          category, and its label is what gets shown. Example:
+#                          A3B implies "architecture: moe".
+#
+# label, explanation and value may use {text} (the matched token, lowercased)
+# and any named regex group. Add !u to uppercase one, as in {text!u}.
+#
+# Category fields
+#   heading      required  The row name in the output. Categories that share a
+#                          heading share a row.
+#   description  required  One sentence saying what this kind of token tells you.
+#   default      optional  What to show when no token in the name belongs to the
+#                          category: a label, or a mapping with label and
+#                          explanation.
+
+schema: 1
+
+# Order here is the display order.
+categories:
+  host:
+    heading: Registry
+    description: The server the model is pulled from, when the name spells one out.
+  org:
+    heading: Publisher
+    description: The account that uploaded the model, which is not always the team that trained it.
+  family:
+    heading: Family
+    description: The model line this belongs to, as named by the team that trained it.
+  version:
+    heading: Version
+    description: Which generation or release of the family this is.
+  size:
+    heading: Size
+    description: How many parameters (learned weights) the model has, the main driver of quality, speed and memory use.
+  effective_size:
+    heading: Size
+    description: The size the model behaves like in memory when its full parameter count is larger.
+  active_params:
+    heading: Size
+    description: How many parameters a mixture-of-experts model actually uses for each token.
+  architecture:
+    heading: Architecture
+    description: How the model's parameters are organized, which affects how fast it runs for its size.
+  tier:
+    heading: Tier
+    description: The maker's label for where the model sits in its lineup, from small and fast to large and capable.
+  tuning:
+    heading: Tuning
+    description: What the model was trained or fine-tuned to do.
+  quantization:
+    heading: Compression
+    description: How the weights were compressed to save memory, usually at a small cost in quality.
+  format:
+    heading: Format
+    description: The file format the weights are stored in, which decides which apps can load them.
+  context:
+    heading: Context
+    description: How much text the model can read at once, when the name states it.
+  build:
+    heading: Build
+    description: Which snapshot or release stage of the model this is.
+  hosting:
+    heading: Runs
+    description: Where the model actually runs.
+    default:
+      label: locally
+      value: local
+      explanation: Nothing in the name marks it as hosted, so the weights download and run on your own machine.
+
+tokens:
+  # ---------------------------------------------------------------- host ----
+  - pattern: [hf.co, huggingface.co]
+    category: host
+    label: Hugging Face
+    explanation: Pulled straight from the Hugging Face Hub rather than from the Ollama library.
+
+  - pattern: [registry.ollama.ai, ollama.com]
+    category: host
+    label: Ollama registry
+    explanation: Ollama's own registry, which is also where a name without a host comes from.
+
+  # ----------------------------------------------------------------- org ----
+  - pattern: library
+    category: org
+    label: Ollama library
+    explanation: Ollama's official curated collection, which is where a name with no publisher comes from.
+
+  - pattern: bartowski
+    category: org
+    label: bartowski (community GGUF conversions)
+    explanation: A prolific community publisher who converts and compresses other teams' models into GGUF files, so not the original author.
+
+  - pattern: unsloth
+    category: org
+    label: Unsloth (conversions and fine-tuning tools)
+    explanation: A company that republishes other teams' models in ready-to-run formats alongside its fine-tuning toolkit, so not the original author.
+
+  - pattern: lmstudio-community
+    category: org
+    label: LM Studio community (conversions)
+    explanation: LM Studio's account for GGUF and MLX conversions of other teams' models, so not the original author.
+
+  - pattern: mlx-community
+    category: org
+    label: MLX community (Apple silicon conversions)
+    explanation: A community account that converts other teams' models to Apple's MLX format, so not the original author.
+
+  - pattern: thebloke
+    category: org
+    label: TheBloke (community conversions)
+    explanation: An early and prolific community publisher of compressed conversions of other teams' models, so not the original author.
+
+  - pattern: ggml-org
+    category: org
+    label: ggml-org (the llama.cpp team)
+    explanation: The team behind llama.cpp, which publishes reference GGUF conversions of other teams' models.
+
+  - pattern: mradermacher
+    category: org
+    label: mradermacher (community GGUF conversions)
+    explanation: A community publisher who converts and compresses other teams' models into GGUF files, so not the original author.
+
+  - pattern: quantfactory
+    category: org
+    label: QuantFactory (community GGUF conversions)
+    explanation: A community publisher that converts and compresses other teams' models into GGUF files, so not the original author.
+
+  - pattern: google
+    category: org
+    label: Google
+    explanation: Google's own account, so the upload comes from the team that trained the model.
+
+  - pattern: [meta, meta-llama]
+    category: org
+    label: Meta
+    explanation: Meta's own account, so the upload comes from the team that trained the model.
+
+  - pattern: microsoft
+    category: org
+    label: Microsoft
+    explanation: Microsoft's own account, so the upload comes from the team that trained the model.
+
+  - pattern: mistralai
+    category: org
+    label: Mistral AI
+    explanation: Mistral AI's own account, so the upload comes from the team that trained the model.
+
+  - pattern: deepseek-ai
+    category: org
+    label: DeepSeek
+    explanation: DeepSeek's own account, so the upload comes from the team that trained the model.
+
+  - pattern: moonshotai
+    category: org
+    label: Moonshot AI
+    explanation: Moonshot AI's own account, so the upload comes from the team that trained the model.
+
+  - pattern: openai
+    category: org
+    label: OpenAI
+    explanation: OpenAI's own account, so the upload comes from the team that trained the model.
+
+  - pattern: ibm-granite
+    category: org
+    label: IBM
+    explanation: IBM's own account for its Granite models, so the upload comes from the team that trained the model.
+
+  - pattern: nvidia
+    category: org
+    label: NVIDIA
+    explanation: NVIDIA's own account, so the upload comes from the team that trained the model.
+
+  - pattern: huggingfacetb
+    category: org
+    label: Hugging Face
+    explanation: The Hugging Face team behind the SmolLM models, so the upload comes from the team that trained the model.
+
+  - pattern: nousresearch
+    category: org
+    label: Nous Research
+    explanation: Nous Research's own account, home of the Hermes fine-tunes.
+
+  - pattern: [cohere, coherelabs, cohereforai]
+    category: org
+    label: Cohere
+    explanation: Cohere's own account, so the upload comes from the team that trained the model.
+
+  - pattern: zai-org
+    category: org
+    label: Zhipu AI
+    explanation: The account of Zhipu AI, also known as Z.ai, so the upload comes from the team that trained the model.
+
+  - pattern: liquidai
+    category: org
+    label: Liquid AI
+    explanation: Liquid AI's own account, so the upload comes from the team that trained the model.
+
+  - pattern: nomic-ai
+    category: org
+    label: Nomic AI
+    explanation: Nomic AI's own account, so the upload comes from the team that trained the model.
+
+  - pattern: baai
+    category: org
+    label: BAAI
+    explanation: The account of the Beijing Academy of Artificial Intelligence, so the upload comes from the team that trained the model.
+
+  - pattern: stabilityai
+    category: org
+    label: Stability AI
+    explanation: Stability AI's own account, so the upload comes from the team that trained the model.
+
+  # -------------------------------------------------------------- family ----
+  - pattern: llama
+    category: family
+    label: Llama
+    maker: Meta
+    explanation: Meta's family of open-weight language models.
+
+  - pattern: codellama
+    category: family
+    label: Code Llama
+    maker: Meta
+    explanation: Meta's Llama models specialized for writing and explaining code.
+
+  - pattern: llama-guard
+    category: family
+    label: Llama Guard
+    maker: Meta
+    explanation: Meta's safety classifiers, which label prompts and replies as safe or unsafe rather than chatting.
+
+  - pattern: gemma
+    category: family
+    label: Gemma
+    maker: Google
+    explanation: Google's family of open-weight models, built from the same research as Gemini.
+
+  - pattern: codegemma
+    category: family
+    label: CodeGemma
+    maker: Google
+    explanation: Google's Gemma models specialized for writing and completing code.
+
+  - pattern: embeddinggemma
+    category: family
+    label: EmbeddingGemma
+    maker: Google
+    explanation: Google's small Gemma-based model that turns text into vectors for search and does not chat.
+
+  - pattern: paligemma
+    category: family
+    label: PaliGemma
+    maker: Google
+    explanation: Google's Gemma-based models that read images as well as text.
+
+  - pattern: medgemma
+    category: family
+    label: MedGemma
+    maker: Google
+    explanation: Google's Gemma models tuned for medical text and images.
+
+  - pattern: shieldgemma
+    category: family
+    label: ShieldGemma
+    maker: Google
+    explanation: Google's Gemma-based safety classifiers, which judge content rather than chatting.
+
+  - pattern: gemini
+    category: family
+    label: Gemini
+    maker: Google
+    explanation: Google's flagship hosted models, which run on Google's servers rather than on your machine.
+    implies: {hosting: cloud}
+
+  - pattern: qwen
+    category: family
+    label: Qwen
+    maker: Alibaba
+    explanation: Alibaba's family of open-weight language models.
+
+  - pattern: qwq
+    category: family
+    label: QwQ
+    maker: Alibaba
+    explanation: A reasoning-focused model line from Alibaba's Qwen team.
+
+  - pattern: deepseek
+    category: family
+    label: DeepSeek
+    maker: DeepSeek
+    explanation: The model family from the Chinese AI lab DeepSeek.
+
+  - pattern: deepseek-r1
+    category: family
+    label: DeepSeek R1
+    maker: DeepSeek
+    explanation: DeepSeek's reasoning line, which works through a problem step by step before it answers.
+
+  - pattern: kimi
+    category: family
+    label: Kimi
+    maker: Moonshot AI
+    explanation: The model family from the Chinese AI lab Moonshot AI.
+
+  - pattern: mistral
+    category: family
+    label: Mistral
+    maker: Mistral AI
+    explanation: The model family from the French AI lab Mistral AI.
+
+  - pattern: mistral-small
+    category: family
+    label: Mistral Small
+    maker: Mistral AI
+    explanation: Mistral AI's smaller general-purpose line, sized to run on a single good GPU or a laptop.
+
+  - pattern: mistral-large
+    category: family
+    label: Mistral Large
+    maker: Mistral AI
+    explanation: Mistral AI's largest and most capable general-purpose line.
+
+  - pattern: mistral-nemo
+    category: family
+    label: Mistral Nemo
+    maker: Mistral AI
+    explanation: A mid-size model Mistral AI built together with NVIDIA.
+
+  - pattern: mixtral
+    category: family
+    label: Mixtral
+    maker: Mistral AI
+    explanation: Mistral AI's mixture-of-experts models, which combine several expert networks in one model.
+    implies: {architecture: moe}
+
+  - pattern: codestral
+    category: family
+    label: Codestral
+    maker: Mistral AI
+    explanation: Mistral AI's models specialized for writing and completing code.
+
+  - pattern: devstral
+    category: family
+    label: Devstral
+    maker: Mistral AI
+    explanation: Mistral AI's models built for coding agents that work across a whole codebase.
+
+  - pattern: magistral
+    category: family
+    label: Magistral
+    maker: Mistral AI
+    explanation: Mistral AI's reasoning line, which works through a problem step by step before it answers.
+
+  - pattern: ministral
+    category: family
+    label: Ministral
+    maker: Mistral AI
+    explanation: Mistral AI's small models meant for laptops, phones and other edge devices.
+
+  - pattern: pixtral
+    category: family
+    label: Pixtral
+    maker: Mistral AI
+    explanation: Mistral AI's models that read images as well as text.
+
+  - pattern: phi
+    category: family
+    label: Phi
+    maker: Microsoft
+    explanation: Microsoft's family of small open-weight models.
+
+  - pattern: granite
+    category: family
+    label: Granite
+    maker: IBM
+    explanation: IBM's family of open-weight models aimed at business use.
+
+  - pattern: gpt-oss
+    category: family
+    label: gpt-oss
+    maker: OpenAI
+    explanation: OpenAI's open-weight models, which you can download and run yourself.
+
+  - pattern: gpt2
+    category: family
+    label: GPT-2
+    maker: OpenAI
+    explanation: OpenAI's small 2019 model, whose weights are free to download.
+
+  - pattern: gpt
+    category: family
+    label: GPT
+    maker: OpenAI
+    explanation: OpenAI's hosted models, which run on OpenAI's servers rather than on your machine.
+    implies: {hosting: cloud}
+
+  - pattern: whisper
+    category: family
+    label: Whisper
+    maker: OpenAI
+    explanation: OpenAI's open-weight speech-to-text models, which transcribe audio rather than chat.
+
+  - pattern: glm
+    category: family
+    label: GLM
+    maker: Zhipu AI
+    explanation: The model family from the Chinese AI lab Zhipu AI, also known as Z.ai.
+
+  - pattern: minimax
+    category: family
+    label: MiniMax
+    maker: MiniMax
+    explanation: The model family from the Chinese AI lab MiniMax.
+
+  - pattern: smollm
+    category: family
+    label: SmolLM
+    maker: Hugging Face
+    explanation: Hugging Face's family of very small models, meant to run on almost any device.
+
+  - pattern: smolvlm
+    category: family
+    label: SmolVLM
+    maker: Hugging Face
+    explanation: Hugging Face's very small models that read images as well as text.
+
+  - pattern: lfm
+    category: family
+    label: LFM
+    maker: Liquid AI
+    explanation: Liquid AI's family of small, efficient models built to run on your own device.
+
+  - pattern: command-r
+    category: family
+    label: Command R
+    maker: Cohere
+    explanation: Cohere's models tuned for answering from retrieved documents and for calling tools.
+
+  - pattern: command-a
+    category: family
+    label: Command A
+    maker: Cohere
+    explanation: Cohere's flagship line for business tasks and agents.
+
+  - pattern: aya
+    category: family
+    label: Aya
+    maker: Cohere
+    explanation: Cohere's multilingual model family.
+
+  - pattern: nemotron
+    category: family
+    label: Nemotron
+    maker: NVIDIA
+    explanation: NVIDIA's family of open-weight models.
+
+  - pattern: hermes
+    category: family
+    label: Hermes
+    maker: Nous Research
+    explanation: Nous Research's fine-tunes of other teams' base models.
+
+  - pattern: dolphin
+    category: family
+    label: Dolphin
+    maker: Cognitive Computations
+    explanation: A community line of fine-tunes of other teams' models with the built-in refusals removed.
+
+  - pattern: llava
+    category: family
+    label: LLaVA
+    explanation: An open research model family that joins an image encoder to a language model so it can discuss pictures.
+
+  - pattern: minicpm
+    category: family
+    label: MiniCPM
+    maker: OpenBMB
+    explanation: OpenBMB's small models, most of which read images as well as text.
+
+  - pattern: moondream
+    category: family
+    label: Moondream
+    explanation: A very small open model that answers questions about images.
+
+  - pattern: nomic-embed-text
+    category: family
+    label: Nomic Embed Text
+    maker: Nomic AI
+    explanation: Nomic AI's model that turns text into vectors for search and does not chat.
+
+  - pattern: mxbai
+    category: family
+    label: mxbai
+    maker: Mixedbread
+    explanation: Mixedbread's models for search, which turn text into vectors or rank passages rather than chat.
+
+  - pattern: bge
+    category: family
+    label: BGE
+    maker: BAAI
+    explanation: BAAI's models for search, which turn text into vectors or rank passages rather than chat.
+
+  - pattern: bge-m3
+    category: family
+    label: BGE-M3
+    maker: BAAI
+    explanation: BAAI's multilingual model that turns text into vectors for search and does not chat.
+
+  - pattern: snowflake-arctic
+    category: family
+    label: Snowflake Arctic
+    maker: Snowflake
+    explanation: Snowflake's model family, best known for its text-to-vector search models.
+
+  - pattern: claude
+    category: family
+    label: Claude
+    maker: Anthropic
+    explanation: Anthropic's hosted models, which run on Anthropic's servers rather than on your machine.
+    implies: {hosting: cloud}
+
+  - pattern: grok
+    category: family
+    label: Grok
+    maker: xAI
+    explanation: xAI's hosted models, which run on xAI's servers rather than on your machine.
+    implies: {hosting: cloud}
+
+  - pattern: tinyllama
+    category: family
+    label: TinyLlama
+    explanation: A community project's very small Llama-style model for low-memory devices.
+
+  - pattern: starcoder
+    category: family
+    label: StarCoder
+    maker: BigCode
+    explanation: The BigCode project's open models for completing code.
+
+  - pattern: vicuna
+    category: family
+    label: Vicuna
+    maker: LMSYS
+    explanation: An early chat fine-tune of Llama from the LMSYS research group.
+
+  - pattern: zephyr
+    category: family
+    label: Zephyr
+    maker: Hugging Face
+    explanation: Chat fine-tunes of other teams' base models from a Hugging Face research team.
+
+  - pattern: stablelm
+    category: family
+    label: StableLM
+    maker: Stability AI
+    explanation: Stability AI's family of small open-weight language models.
+
+  - pattern: falcon
+    category: family
+    label: Falcon
+    maker: Technology Innovation Institute
+    explanation: The open-weight model family from the Technology Innovation Institute in Abu Dhabi.
+
+  # ------------------------------------------------------------- version ----
+  - pattern: '\d{1,2}(?:\.\d{1,2}){0,2}'
+    regex: true
+    category: version
+    after: family
+    label: '{text}'
+    explanation: Release {text} of this family, where a higher number is newer.
+    examples: ['3', '3.5', '0.1']
+
+  - pattern: '(?P<major>\d{1,2})_(?P<minor>\d)'
+    regex: true
+    category: version
+    after: family
+    value: '{major}.{minor}'
+    label: '{major}.{minor}'
+    explanation: Release {major}.{minor} of this family, written with a dash instead of a dot.
+    examples: ['3-5', '4-1']
+
+  - pattern: 'v(?P<n>\d{1,2}(?:\.\d{1,2}){0,2})'
+    regex: true
+    category: version
+    label: 'v{n}'
+    explanation: Version {n} of this model, where a higher number is newer.
+    examples: [v0.3, V2, v1.5]
+
+  - pattern: 'k(?P<n>\d{1,2}(?:\.\d{1,2})?)'
+    regex: true
+    category: version
+    after: family
+    label: 'K{n}'
+    explanation: Generation K{n} of this family, where a higher number is newer.
+    examples: [k2, k3.1]
+
+  - pattern: '(?P<n>\d{1,2})n'
+    regex: true
+    category: version
+    after: family
+    label: '{n}n'
+    explanation: Generation {n}n, where the n marks a line designed for phones, laptops and other small devices.
+    examples: [3n]
+
+  - pattern: '(?P<n>\d)o'
+    regex: true
+    category: version
+    after: family
+    label: '{n}o'
+    explanation: Generation {n}o, where the o stands for omni, meaning one model handles text, images and audio.
+    examples: [4o]
+
+  # ---------------------------------------------------------------- size ----
+  - pattern: '(?P<n>\d+(?:\.\d+)?)b'
+    regex: true
+    category: size
+    value: '{n}B'
+    label: '{n}B parameters'
+    explanation: About {n} billion parameters (learned weights), where more usually means more capable but slower and hungrier for memory.
+    examples: [4b, 12B, 1.5b]
+
+  - pattern: '(?P<n>\d+(?:\.\d+)?)m'
+    regex: true
+    category: size
+    value: '{n}M'
+    label: '{n}M parameters'
+    explanation: About {n} million parameters (learned weights), which is tiny by current standards and runs on almost anything.
+    examples: [270m, 135M]
+
+  - pattern: '(?P<n>\d+(?:\.\d+)?)t'
+    regex: true
+    category: size
+    value: '{n}T'
+    label: '{n}T parameters'
+    explanation: About {n} trillion parameters (learned weights), which is far too large for a personal computer.
+    examples: [1t]
+
+  - pattern: '(?P<k>\d{1,2})x(?P<n>\d+(?:\.\d+)?)b'
+    regex: true
+    category: size
+    value: '{k}x{n}B'
+    label: '{k} experts of {n}B parameters each'
+    explanation: Built from {k} expert networks of about {n} billion parameters each, only some of which run for each token.
+    examples: [8x7b]
+    implies: {architecture: moe}
+
+  # ------------------------------------------------------ effective_size ----
+  - pattern: 'e(?P<n>\d+(?:\.\d+)?)b'
+    regex: true
+    category: effective_size
+    value: '{n}B'
+    label: 'effective {n}B parameters'
+    explanation: Behaves like a {n}-billion-parameter model in memory, although the full model holds more parameters than that.
+    examples: [e2b, E4B]
+
+  # ------------------------------------------------------- active_params ----
+  - pattern: 'a(?P<n>\d+(?:\.\d+)?)b'
+    regex: true
+    category: active_params
+    value: '{n}B'
+    label: '{n}B active per token'
+    explanation: Only about {n} billion of the model's parameters run for each token, so it is faster than its total size suggests.
+    examples: [a3b, A22B]
+    implies: {architecture: moe}
+
+  # -------------------------------------------------------- architecture ----
+  - pattern: moe
+    category: architecture
+    label: mixture of experts
+    explanation: Built from many expert sub-networks of which only a few run for each token, so it is faster than its total size suggests.
+
+  - pattern: dense
+    category: architecture
+    label: dense
+    explanation: Every parameter is used for every token, which is how most models work.
+
+  # ---------------------------------------------------------------- tier ----
+  - pattern: pro
+    category: tier
+    label: pro tier (a more capable option)
+    explanation: The maker's name for a larger, more capable model than the standard one in the same generation.
+
+  - pattern: max
+    category: tier
+    label: max tier (the most capable option)
+    explanation: The maker's name for its largest and most capable model in the same generation.
+
+  - pattern: ultra
+    category: tier
+    label: ultra tier (the most capable option)
+    explanation: The maker's name for its largest and most capable model in the same generation.
+
+  - pattern: plus
+    category: tier
+    label: plus tier (a step up from standard)
+    explanation: The maker's name for a model one step above the standard one in the same generation.
+
+  - pattern: turbo
+    category: tier
+    label: turbo tier (tuned for speed)
+    explanation: A faster and usually cheaper variant of the standard model, sometimes at a small cost in quality.
+
+  - pattern: flash
+    category: tier
+    label: flash tier (built for speed and low cost)
+    explanation: The maker's name for a smaller model built to answer quickly and cheaply.
+
+  - pattern: lite
+    category: tier
+    label: lite tier (lighter and cheaper)
+    explanation: A lighter, cheaper variant that gives up some quality for speed.
+
+  - pattern: air
+    category: tier
+    label: air tier (lighter and cheaper)
+    explanation: A lighter, cheaper variant that gives up some quality for speed.
+
+  - pattern: mini
+    category: tier
+    label: mini tier (smaller and faster)
+    explanation: A smaller, faster and cheaper sibling of the standard model.
+
+  - pattern: nano
+    category: tier
+    label: nano tier (the smallest and fastest)
+    explanation: The maker's smallest and fastest model in the same generation.
+
+  - pattern: micro
+    category: tier
+    label: micro tier (very small)
+    explanation: One of the maker's smallest models in the same generation.
+
+  - pattern: tiny
+    category: tier
+    label: tiny tier (very small)
+    explanation: One of the maker's smallest models in the same generation.
+
+  - pattern: small
+    category: tier
+    label: small tier
+    explanation: The smaller size in the maker's lineup, which is faster and needs less memory.
+
+  - pattern: medium
+    category: tier
+    label: medium tier
+    explanation: The middle size in the maker's lineup.
+
+  - pattern: large
+    category: tier
+    label: large tier
+    explanation: The larger size in the maker's lineup, which is more capable but slower and needs more memory.
+
+  # "base" is also a tuning token, so it is reported as ambiguous.
+  - pattern: base
+    category: tier
+    label: base size (the standard size in its lineup)
+    explanation: The standard size in a lineup that also has smaller and larger versions.
+
+  - pattern: haiku
+    category: tier
+    label: haiku tier (the smallest and fastest)
+    explanation: Anthropic's name for its smallest and fastest model in a generation.
+
+  - pattern: sonnet
+    category: tier
+    label: sonnet tier (the mid-size option)
+    explanation: Anthropic's name for its mid-size model in a generation.
+
+  - pattern: opus
+    category: tier
+    label: opus tier (the most capable option)
+    explanation: Anthropic's name for its largest and most capable model in a generation.
+
+  # -------------------------------------------------------------- tuning ----
+  - pattern: [it, instruct]
+    category: tuning
+    label: instruction tuned (ready for chat)
+    explanation: Fine-tuned to follow instructions and hold a conversation, unlike a raw base model.
+
+  - pattern: chat
+    category: tuning
+    label: chat tuned
+    explanation: Fine-tuned for back-and-forth conversation.
+
+  # "base" is also a tier token, so it is reported as ambiguous.
+  - pattern: base
+    category: tuning
+    label: base model (not tuned for chat)
+    explanation: The raw pretrained model, which continues text but was not taught to follow instructions or chat.
+
+  - pattern: [code, coder]
+    category: tuning
+    label: code tuned
+    explanation: Trained or fine-tuned mainly for writing and explaining code.
+
+  - pattern: [vision, vl]
+    category: tuning
+    label: vision (reads images)
+    explanation: Can take images as input alongside text.
+
+  - pattern: multimodal
+    category: tuning
+    label: multimodal (reads more than text)
+    explanation: Can take other kinds of input, such as images or audio, alongside text.
+
+  - pattern: [embed, embedding, embeddings]
+    category: tuning
+    label: embedding model (does not chat)
+    explanation: Turns text into lists of numbers for search and similarity, and cannot hold a conversation.
+
+  - pattern: [rerank, reranker]
+    category: tuning
+    label: reranker (does not chat)
+    explanation: Scores how well each passage answers a query so search results can be reordered, and cannot hold a conversation.
+
+  - pattern: [thinking, reasoning, reasoner]
+    category: tuning
+    label: thinking (reasons before answering)
+    explanation: Works through a problem step by step before giving its answer, which is slower but better on hard questions.
+
+  - pattern: [distill, distilled]
+    category: tuning
+    label: distilled
+    explanation: A smaller model trained to imitate a larger one, keeping much of its ability at a fraction of the size.
+
+  - pattern: uncensored
+    category: tuning
+    label: uncensored
+    explanation: Fine-tuned to remove the refusals built into the original model.
+
+  - pattern: abliterated
+    category: tuning
+    label: abliterated (refusals removed)
+    explanation: Edited to remove the model's built-in tendency to refuse requests, without retraining it.
+
+  # -------------------------------------------------------- quantization ----
+  - pattern: 'q(?P<bits>[2-8])_k_s'
+    regex: true
+    category: quantization
+    value: 'Q{bits}_K_S'
+    label: '{bits}-bit (Q{bits}_K_S, the smaller variant)'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's K-quant method, in the small variant that saves the most space.
+    examples: [q4_k_s, Q5_K_S]
+
+  - pattern: 'q(?P<bits>[2-8])_k_m'
+    regex: true
+    category: quantization
+    value: 'Q{bits}_K_M'
+    label: '{bits}-bit (Q{bits}_K_M, the balanced variant)'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's K-quant method, in the medium variant that balances size and quality.
+    examples: [q4_k_m, Q5_K_M]
+
+  - pattern: 'q(?P<bits>[2-8])_k_l'
+    regex: true
+    category: quantization
+    value: 'Q{bits}_K_L'
+    label: '{bits}-bit (Q{bits}_K_L, the larger variant)'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's K-quant method, in the large variant that keeps the most quality.
+    examples: [q3_k_l, Q4_K_L]
+
+  - pattern: 'q(?P<bits>[2-8])_k'
+    regex: true
+    category: quantization
+    value: 'Q{bits}_K'
+    label: '{bits}-bit (Q{bits}_K)'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's K-quant method.
+    examples: [q6_k, Q2_K]
+
+  - pattern: 'q(?P<bits>[2-8])_(?P<v>[01])'
+    regex: true
+    category: quantization
+    value: 'Q{bits}_{v}'
+    label: '{bits}-bit (Q{bits}_{v})'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's original, simpler method.
+    examples: [q4_0, Q8_0, q5_1]
+
+  - pattern: 'q(?P<bits>[2-8])'
+    regex: true
+    category: quantization
+    value: 'Q{bits}'
+    label: '{bits}-bit'
+    explanation: Weights compressed to roughly {bits} bits each instead of the original 16 or 32.
+    examples: [q4, Q8]
+
+  - pattern: 'iq(?P<bits>[1-4])_(?:xxs|xs|s|m)'
+    regex: true
+    category: quantization
+    value: '{text!u}'
+    label: '{bits}-bit ({text!u})'
+    explanation: Weights compressed to roughly {bits} bits each with llama.cpp's i-quant method, which keeps more quality at very small sizes.
+    examples: [iq3_xxs, IQ4_XS, iq2_m]
+
+  - pattern: '(?P<bits>[1-8])bit'
+    regex: true
+    category: quantization
+    label: '{bits}-bit'
+    explanation: Weights compressed to {bits} bits each instead of the original 16 or 32.
+    examples: [4bit, 8bit]
+
+  - pattern: '(?P<bpw>\d(?:\.\d{1,2})?)bpw'
+    regex: true
+    category: quantization
+    label: '{bpw} bits per weight'
+    explanation: Weights compressed to an average of {bpw} bits each, the sizing used by the ExLlama formats.
+    examples: [4.0bpw, 6.5bpw]
+
+  - pattern: 'int(?P<bits>4|8)'
+    regex: true
+    category: quantization
+    label: '{bits}-bit integers'
+    explanation: Weights stored as {bits}-bit whole numbers instead of 16 or 32-bit decimals.
+    examples: [int4, int8]
+
+  - pattern: [fp16, f16]
+    category: quantization
+    value: fp16
+    label: 16-bit floats (not compressed)
+    explanation: Weights kept at 16-bit precision, which preserves full quality but needs the most memory.
+
+  - pattern: bf16
+    category: quantization
+    label: 16-bit floats (not compressed)
+    explanation: Weights kept in bfloat16, the 16-bit format most models are trained in, which preserves full quality but needs the most memory.
+
+  - pattern: [fp32, f32]
+    category: quantization
+    value: fp32
+    label: 32-bit floats (not compressed)
+    explanation: Weights kept at full 32-bit precision, which takes twice the memory of 16-bit for no practical gain when running a model.
+
+  - pattern: qat
+    category: quantization
+    label: quantization-aware trained
+    explanation: Trained with compression in the loop, so the compressed weights lose less quality than ordinary after-the-fact quantization.
+
+  - pattern: awq
+    category: quantization
+    label: AWQ (for GPU servers)
+    explanation: Compressed with Activation-aware Weight Quantization, a method used mostly with GPU serving software.
+
+  - pattern: gptq
+    category: quantization
+    label: GPTQ (for GPUs)
+    explanation: Compressed with GPTQ, an older quantization method aimed at running on GPUs.
+
+  - pattern: [exl2, exl3]
+    category: quantization
+    label: ExLlama format (for GPUs)
+    explanation: Compressed for the ExLlama GPU runtime, which lets publishers pick a precise number of bits per weight.
+
+  - pattern: imatrix
+    category: quantization
+    label: importance-matrix calibrated
+    explanation: Compressed with the help of sample text that shows which weights matter most, which keeps more quality at the same size.
+
+  # -------------------------------------------------------------- format ----
+  - pattern: gguf
+    category: format
+    label: GGUF (for llama.cpp, Ollama and LM Studio)
+    explanation: A single-file format used by llama.cpp and the apps built on it, such as Ollama and LM Studio.
+
+  - pattern: ggml
+    category: format
+    label: GGML (older format, replaced by GGUF)
+    explanation: The predecessor of GGUF, which current versions of llama.cpp and Ollama no longer load.
+
+  - pattern: safetensors
+    category: format
+    label: Safetensors (for Transformers and similar frameworks)
+    explanation: The standard weights format for PyTorch-based tools such as Hugging Face Transformers.
+
+  - pattern: mlx
+    category: format
+    label: MLX (for Apple silicon)
+    explanation: Converted for Apple's MLX framework, which runs only on Macs with Apple silicon.
+
+  - pattern: onnx
+    category: format
+    label: ONNX (portable runtime format)
+    explanation: Exported to ONNX, a portable format that ONNX Runtime can run on many kinds of hardware.
+
+  - pattern: openvino
+    category: format
+    label: OpenVINO (for Intel hardware)
+    explanation: Converted for Intel's OpenVINO toolkit, which targets Intel processors and graphics chips.
+
+  - pattern: hf
+    category: format
+    label: Transformers layout
+    explanation: Weights laid out for the Hugging Face Transformers library rather than in the maker's original layout.
+
+  # ------------------------------------------------------------- context ----
+  - pattern: '(?P<n>\d{1,4})k'
+    regex: true
+    category: context
+    label: '{n}k-token context window'
+    explanation: Can read about {n} thousand tokens of text at once, counting both your prompt and its reply.
+    examples: [4k, 128k]
+
+  # --------------------------------------------------------------- build ----
+  - pattern: latest
+    category: build
+    label: latest (the default build)
+    explanation: A moving pointer to whichever build the publisher currently treats as the default, so its contents can change over time.
+
+  - pattern: preview
+    category: build
+    label: preview (early release)
+    explanation: An early release that the maker may still change or withdraw.
+
+  - pattern: [exp, experimental]
+    category: build
+    value: experimental
+    label: experimental
+    explanation: An experimental release that the maker may change or withdraw without notice.
+
+  - pattern: beta
+    category: build
+    label: beta (pre-release)
+    explanation: A pre-release build that came before the finished version.
+
+  # Date stamps. The year range is 2023 to 2027; widen it as the years pass.
+  # A stamp such as 0725 fits both month-day and month-year, so it is reported
+  # as ambiguous rather than guessed.
+  - pattern: '(?P<yy>2[3-7])(?P<mm>0[1-9]|1[0-2])'
+    regex: true
+    category: build
+    value: '20{yy}-{mm}'
+    label: 'released 20{yy}-{mm}'
+    explanation: A date stamp read as year then month, so this snapshot is from month {mm} of 20{yy}.
+    examples: ['2507', '2411']
+
+  - pattern: '(?P<mm>0[1-9]|1[0-2])(?P<dd>0[1-9]|[12]\d|3[01])'
+    regex: true
+    category: build
+    value: '{mm}-{dd}'
+    label: 'dated {mm}-{dd} (month-day)'
+    explanation: A date stamp read as month then day, so this snapshot is from day {dd} of month {mm}.
+    examples: ['0725', '0613']
+
+  - pattern: '(?P<mm>0[1-9]|1[0-2])(?P<yy>2[3-7])'
+    regex: true
+    category: build
+    value: '20{yy}-{mm}'
+    label: 'released 20{yy}-{mm}'
+    explanation: A date stamp read as month then year, so this snapshot is from month {mm} of 20{yy}.
+    examples: ['0725', '0126']
+
+  - pattern: '(?P<mm>0[1-9]|1[0-2])_(?P<dd>0[1-9]|[12]\d|3[01])'
+    regex: true
+    category: build
+    value: '{mm}-{dd}'
+    label: 'dated {mm}-{dd} (month-day)'
+    explanation: A date stamp read as month then day, so this snapshot is from day {dd} of month {mm}.
+    examples: ['06-17']
+
+  - pattern: '(?P<y>20[2-3]\d)(?P<m>0[1-9]|1[0-2])(?P<d>0[1-9]|[12]\d|3[01])'
+    regex: true
+    category: build
+    value: '{y}-{m}-{d}'
+    label: 'dated {y}-{m}-{d}'
+    explanation: A date stamp, so this snapshot is from {y}-{m}-{d}.
+    examples: ['20250514']
+
+  # ------------------------------------------------------------- hosting ----
+  - pattern: cloud
+    category: hosting
+    label: in the cloud (remote, not on your machine)
+    explanation: Runs on the provider's servers, so nothing is downloaded and your prompts leave your machine.

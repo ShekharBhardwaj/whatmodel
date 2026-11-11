@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "whatmodel"
+dynamic = ["version"]
+description = "Explain LLM model names in plain English."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Shekhar" }]
+keywords = ["llm", "ollama", "huggingface", "gguf", "lm-studio", "model-names", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Utilities",
+  "Typing :: Typed",
+]
+dependencies = [
+  "httpx>=0.27",
+  "pyyaml>=6.0",
+  "rich>=13.7",
+  "typer>=0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/ShekharBhardwaj/whatmodel"
+Repository = "https://github.com/ShekharBhardwaj/whatmodel"
+Issues = "https://github.com/ShekharBhardwaj/whatmodel/issues"
+Changelog = "https://github.com/ShekharBhardwaj/whatmodel/blob/main/CHANGELOG.md"
+
+[project.scripts]
+whatmodel = "whatmodel.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.8",
+]
+
+# The git tag is the only source of the version: tag v0.2.0 builds version 0.2.0.
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["whatmodel"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/whatmodel", "/tests", "/CHANGELOG.md", "/CONTRIBUTING.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # import sorting
+  "UP",  # modern syntax for the minimum Python
+  "B",   # likely bugs
+  "SIM", # simplifications
+  "C4",  # comprehensions
+  "ANN", # type hints everywhere
+  "PT",  # pytest style
+  "RET", # return statements
+  "RUF", # ruff's own checks
+]
+ignore = [
+  "ANN401", # Any is the honest type for parsed YAML and JSON
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
