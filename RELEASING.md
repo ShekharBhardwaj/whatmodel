@@ -25,10 +25,12 @@ gh release create v0.2.0 --target main --generate-notes
 
 ### Release candidates
 
-A tag ending in `rcN`, such as `v0.2.0rc1`, goes to TestPyPI only. The PyPI job is skipped. Tick "Set as a pre-release" when you publish it. To try the result:
+A tag ending in `rcN`, such as `v0.2.0rc1`, is a rehearsal. It is tested, built and attached to the GitHub Release, but the PyPI job is skipped, so nothing is published. Tick "Set as a pre-release" when you publish it.
+
+Use one to check the pipeline before a real release. It does not exercise the PyPI upload itself, so the first real release is also the first test of trusted publishing. To try the built wheel, download it from the release page and run:
 
 ```bash
-uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match whatmodel@0.2.0rc1 --version
+uvx --from ./whatmodel-0.2.0rc1-py3-none-any.whl whatmodel --version
 ```
 
 ### Tag rules
@@ -44,11 +46,10 @@ The tag must be `vX.Y.Z` or `vX.Y.ZrcN`. Anything else, such as `0.2.0`, `v0.2` 
 | `check-tag` | Fails fast if the tag is not `vX.Y.Z` or `vX.Y.ZrcN`. |
 | `test` | Runs the same checks as CI, on Python 3.10 to 3.13 across Linux, macOS and Windows. |
 | `build` | Runs `uv build`, checks the built version equals the tag, runs `twine check`, installs the wheel in a clean environment and runs `whatmodel --version` and `whatmodel qwen3.5:4b --offline`, then uploads `dist/` as an artifact. |
-| `publish-testpypi` | Publishes that artifact to TestPyPI. |
-| `publish-pypi` | Publishes the same artifact to PyPI, after your approval. Skipped for `rc` tags. |
+| `publish-pypi` | Publishes that artifact to PyPI, after your approval. Skipped for `rc` tags. |
 | `attach-assets` | Uploads the sdist and wheel to the GitHub Release page. |
 
-The publish jobs never rebuild. They upload the exact files the `build` job produced.
+The publish job never rebuilds. It uploads the exact files the `build` job produced.
 
 ## One-time setup
 
@@ -73,25 +74,15 @@ The project does not exist on PyPI yet, so the publisher is "pending": it create
 
 A pending publisher does not reserve the name. Until the first release goes out, someone else could still register `whatmodel`, so do not leave a long gap between this step and the first release.
 
-### 2. TestPyPI: add a pending trusted publisher
+### 2. GitHub: create the environment
 
-TestPyPI is a separate site with its own account.
-
-1. Sign in at https://test.pypi.org and open https://test.pypi.org/manage/account/publishing/
-2. Fill in the same form, with one difference: Environment name is `testpypi`.
-
-### 3. GitHub: create the two environments
-
-In the repository, open Settings, then Environments.
-
-1. Create an environment named `testpypi`. No protection rules are needed.
-2. Create an environment named `pypi`. Turn on "Required reviewers", add yourself, and save. This is the approval step that stops a release before it reaches PyPI.
+In the repository, open Settings, then Environments. Create an environment named `pypi`, turn on "Required reviewers", add yourself, and save. This is the approval step that stops a release before it reaches PyPI.
 
 Optional but sensible for `pypi`: under "Deployment branches and tags", choose "Selected branches and tags" and add a tag rule for `v*`, so only release tags can deploy.
 
-The environment names must match the workflow and the publishers exactly: `pypi` and `testpypi`.
+The environment name must match the workflow and the publisher exactly: `pypi`.
 
-### 4. GitHub: labels for release notes
+### 3. GitHub: labels for release notes
 
 Create the labels the release notes use if they do not exist: `tokens`, `feature`, `fix`, `skip-changelog`. `bug` and `enhancement` exist by default.
 
@@ -99,6 +90,6 @@ Create the labels the release notes use if they do not exist: `tokens`, `feature
 
 - **`check-tag` fails.** Delete the release and the tag, then publish again with a valid tag.
 - **`test` or `build` fails.** Nothing was published. Fix `main`, delete the release and tag, and publish the release again.
-- **`publish-testpypi` fails with an "invalid-publisher" error.** The pending publisher on TestPyPI does not match. Check the owner, repository, workflow file name and environment name, then re-run the failed job.
-- **`publish-pypi` fails or the approval times out.** Re-run the failed jobs from the run page. TestPyPI already has the files, and that job skips files that exist.
+- **`publish-pypi` fails with an "invalid-publisher" error.** The pending publisher on PyPI does not match. Check the owner, repository, workflow file name and environment name, then re-run the failed job.
+- **The approval times out.** Re-run the failed jobs from the run page. Nothing was published, so nothing needs cleaning up.
 - **A bad version reached PyPI.** A version number can never be reused. Yank the release on PyPI and ship a new patch version.

@@ -19,6 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library API: `parse()` and `explain()`.
 - Token dictionary in `whatmodel/tokens.yaml`, the only place token meanings live.
 - CI on Python 3.10 to 3.13 across Linux, macOS and Windows.
-- Release workflow that publishes to TestPyPI and PyPI with Trusted Publishing when a GitHub Release is published.
+- Release workflow that publishes to PyPI with Trusted Publishing when a GitHub Release is published.
 
 [Unreleased]: https://github.com/ShekharBhardwaj/whatmodel/commits/main
