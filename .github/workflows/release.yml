@@ -1,75 +1,142 @@
 name: Release
 
-# Publishing a GitHub Release publishes that version to PyPI.
-# The tag is the only source of the version: tag v0.2.0 ships whatmodel 0.2.0.
-# Tags ending in rcN (v0.2.0rc1) are rehearsals: they are tested, built and
-# attached to the GitHub Release, but never published to PyPI.
+# One click releases a new version.
+#
+#   Actions tab -> Release -> Run workflow -> pick patch, minor or major.
+#
+# The workflow works out the next version from the latest tag, tests and builds
+# it, waits for approval, publishes to PyPI, then creates the tag and the GitHub
+# Release with generated notes and the built files attached.
+#
+# The git tag is the only source of the version: tag v0.2.0 is whatmodel 0.2.0.
+# A rehearsal run (v0.2.0rc1) does everything except publish to PyPI.
+#
+# Publishing a GitHub Release by hand still works and runs the same jobs.
 #
 # Jobs run in order and each needs the one before it:
-#   check-tag -> test -> build -> publish-pypi -> attach-assets
+#   plan -> test -> build -> publish-pypi -> github-release
 #
 # Publishing uses PyPI Trusted Publishing (OIDC). There are no API tokens or
-# secrets. The publish jobs must stay in this file: PyPI does not accept
-# trusted publishing from a reusable workflow. See RELEASING.md for the
-# one-time setup on PyPI and GitHub.
+# secrets. The publish job must stay in this file: PyPI does not accept
+# trusted publishing from a reusable workflow. See RELEASING.md.
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      rehearsal:
+        description: Rehearsal only (rc tag, nothing goes to PyPI)
+        type: boolean
+        default: false
   release:
     types: [published]
 
 permissions:
   contents: read
 
+# One release at a time, so two runs can never pick the same version.
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release
   cancel-in-progress: false
 
 jobs:
-  check-tag:
-    name: Check the tag
+  plan:
+    name: Work out the version
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.tag.outputs.version }}
-      is_rc: ${{ steps.tag.outputs.is_rc }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      is_rc: ${{ steps.plan.outputs.is_rc }}
     steps:
-      - name: Require vX.Y.Z or vX.Y.ZrcN
-        id: tag
+      - name: Check out the code with its tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pick the tag
+        id: plan
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          BUMP: ${{ inputs.bump }}
+          REHEARSAL: ${{ inputs.rehearsal }}
         run: |
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]; then
-            echo "::error::Tag '$TAG' is not vX.Y.Z or vX.Y.ZrcN. Nothing was built or published."
+          set -euo pipefail
+          if [[ "$EVENT" == "release" ]]; then
+            tag="$RELEASE_TAG"
+          else
+            if [[ "$REF" != "refs/heads/main" ]]; then
+              echo "::error::Releases are cut from main. This run was started on $REF."
+              exit 1
+            fi
+            latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            latest="${latest:-v0.0.0}"
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "$BUMP" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *) echo "::error::Unknown bump '$BUMP'."; exit 1 ;;
+            esac
+            next="${major}.${minor}.${patch}"
+            if [[ "$REHEARSAL" == "true" ]]; then
+              count="$(git tag --list "v${next}rc*" | wc -l | tr -d ' ')"
+              tag="v${next}rc$((count + 1))"
+            else
+              tag="v${next}"
+            fi
+            if git rev-parse -q --verify "refs/tags/${tag}" > /dev/null; then
+              echo "::error::Tag $tag already exists."
+              exit 1
+            fi
+            echo "Latest release is $latest; this run will release $tag."
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]; then
+            echo "::error::Tag '$tag' is not vX.Y.Z or vX.Y.ZrcN. Nothing was built or published."
             exit 1
           fi
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          if [[ "$TAG" == *rc* ]]; then
-            echo "is_rc=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_rc=false" >> "$GITHUB_OUTPUT"
-          fi
+          {
+            echo "tag=${tag}"
+            echo "version=${tag#v}"
+            if [[ "$tag" == *rc* ]]; then echo "is_rc=true"; else echo "is_rc=false"; fi
+          } >> "$GITHUB_OUTPUT"
+          echo "### Releasing \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Test
-    needs: check-tag
+    needs: plan
     uses: ./.github/workflows/ci.yml
 
   build:
     name: Build
-    needs: [check-tag, test]
+    needs: [plan, test]
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.check-tag.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - name: Check out the tagged commit
+      - name: Check out the code with its tags
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # hatch-vcs reads the version from the tag
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
+
+      # hatch-vcs reads the version from the tag. On a button-started run the
+      # tag is not on GitHub yet (it is created only after PyPI accepts the
+      # files), so it is set here, in this job's checkout only.
+      - name: Tag this commit locally
+        run: git rev-parse -q --verify "refs/tags/${TAG}" > /dev/null || git tag "$TAG"
 
       - name: Build the sdist and wheel
         run: uv build
@@ -111,8 +178,8 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [check-tag, build]
-    if: needs.check-tag.outputs.is_rc == 'false'
+    needs: [plan, build]
+    if: needs.plan.outputs.is_rc == 'false'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -129,10 +196,10 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
-  attach-assets:
-    name: Attach files to the GitHub Release
-    needs: [build, publish-pypi]
-    # Runs after PyPI succeeds, and also for rc tags, where the PyPI job is skipped.
+  github-release:
+    name: Tag and publish the GitHub Release
+    needs: [plan, build, publish-pypi]
+    # Runs after PyPI succeeds, and also for rehearsals, where the PyPI job is skipped.
     if: >-
       ${{
         !cancelled()
@@ -141,7 +208,7 @@ jobs:
       }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write # needed to upload release assets
+      contents: write # needed to create the tag, the release and its assets
     steps:
       - name: Download the files built by the build job
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -149,9 +216,21 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Upload the sdist and wheel to the release
+      - name: Create the release, or attach files to the one that started this run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$TAG" dist/* --clobber
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          IS_RC: ${{ needs.plan.outputs.is_rc }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "release" ]]; then
+            gh release upload "$TAG" dist/* --clobber
+            exit 0
+          fi
+          options=(--target "$GITHUB_SHA" --title "$TAG" --generate-notes)
+          if [[ "$IS_RC" == "true" ]]; then
+            options+=(--prerelease)
+          fi
+          gh release create "$TAG" "${options[@]}" dist/*

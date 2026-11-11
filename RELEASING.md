@@ -1,37 +1,47 @@
 # Releasing
 
-Publishing a GitHub Release publishes that version to PyPI. The git tag is the only source of the version: tag `v0.2.0` ships `whatmodel 0.2.0`. Nothing in the repo holds a version number, and no API token or secret is stored anywhere.
+A release is one click. The workflow picks the next version, tests and builds it, waits for your approval, publishes to PyPI, then creates the tag and the GitHub Release.
+
+The git tag is the only source of the version: tag `v0.2.0` is `whatmodel 0.2.0`. Nothing in the repo holds a version number, and no API token or secret is stored anywhere.
 
 ## Cut a release
 
 1. Make sure `main` is green in the Actions tab.
-2. Update `CHANGELOG.md`: rename `Unreleased` to the new version and date, add a fresh `Unreleased` section, and fix the links at the bottom. Commit and push to `main`.
-3. Open https://github.com/ShekharBhardwaj/whatmodel/releases/new
-4. In "Choose a tag", type the new tag, for example `v0.2.0`, and pick "Create new tag on publish". Target `main`.
-5. Click "Generate release notes". The categories come from `.github/release.yml`.
-6. Click "Publish release".
-7. Watch the "Release" workflow in the Actions tab. When it reaches `publish-pypi` it waits for you: open the run, click "Review deployments", tick `pypi`, and approve.
-8. Check the result:
+2. Open https://github.com/ShekharBhardwaj/whatmodel/actions/workflows/release.yml
+3. Click "Run workflow", leave the branch on `main`, and choose what to raise:
+
+   | Choice | Example | Use it for |
+   |---|---|---|
+   | `patch` | 0.1.0 to 0.1.1 | Fixes and new tokens |
+   | `minor` | 0.1.1 to 0.2.0 | New features |
+   | `major` | 0.2.0 to 1.0.0 | Breaking changes |
+
+   For the very first release choose `minor`, which gives `0.1.0`.
+4. Click the green "Run workflow" button.
+5. When the run reaches "Publish to PyPI" it waits for you. Open the run, click "Review deployments", tick `pypi`, and approve.
+6. Check the result:
 
    ```bash
-   uvx whatmodel@0.2.0 --version
+   uvx whatmodel@latest --version
    ```
 
-The same thing from the command line, after step 2:
+The same thing from a terminal:
 
 ```bash
-gh release create v0.2.0 --target main --generate-notes
+gh workflow run release.yml -f bump=patch
 ```
 
-### Release candidates
+Release notes are generated from merged pull requests, grouped by the labels in `.github/release.yml`. Update `CHANGELOG.md` before you click if you keep it by hand.
 
-A tag ending in `rcN`, such as `v0.2.0rc1`, is a rehearsal. It is tested, built and attached to the GitHub Release, but the PyPI job is skipped, so nothing is published. Tick "Set as a pre-release" when you publish it.
+### Rehearsals
 
-Use one to check the pipeline before a real release. It does not exercise the PyPI upload itself, so the first real release is also the first test of trusted publishing. To try the built wheel, download it from the release page and run:
+Tick "Rehearsal only" when you run the workflow. It does everything except publish to PyPI: it tests, builds, and creates a pre-release on GitHub tagged `rcN`, such as `v0.2.0rc1`, with the built files attached. Running it again for the same version gives `rc2`, and so on.
 
-```bash
-uvx --from ./whatmodel-0.2.0rc1-py3-none-any.whl whatmodel --version
-```
+A rehearsal does not exercise the PyPI upload itself, so the first real release is also the first test of trusted publishing.
+
+### Releasing by hand
+
+Publishing a GitHub Release yourself still works and runs the same jobs. Create it with a new tag such as `v0.2.0`; the workflow then publishes that version and attaches the files.
 
 ### Tag rules
 
@@ -43,13 +53,15 @@ The tag must be `vX.Y.Z` or `vX.Y.ZrcN`. Anything else, such as `0.2.0`, `v0.2` 
 
 | Job | What it does |
 |---|---|
-| `check-tag` | Fails fast if the tag is not `vX.Y.Z` or `vX.Y.ZrcN`. |
+| `plan` | Works out the next tag from the latest one and your choice. Fails fast if the run is not on `main` or the tag is not `vX.Y.Z` or `vX.Y.ZrcN`. |
 | `test` | Runs the same checks as CI, on Python 3.10 to 3.13 across Linux, macOS and Windows. |
 | `build` | Runs `uv build`, checks the built version equals the tag, runs `twine check`, installs the wheel in a clean environment and runs `whatmodel --version` and `whatmodel qwen3.5:4b --offline`, then uploads `dist/` as an artifact. |
-| `publish-pypi` | Publishes that artifact to PyPI, after your approval. Skipped for `rc` tags. |
-| `attach-assets` | Uploads the sdist and wheel to the GitHub Release page. |
+| `publish-pypi` | Publishes that artifact to PyPI, after your approval. Skipped for rehearsals. |
+| `github-release` | Creates the tag and the GitHub Release with generated notes, and attaches the sdist and wheel. |
 
 The publish job never rebuilds. It uploads the exact files the `build` job produced.
+
+The tag is created last, only after PyPI has accepted the files. If anything fails before that, no tag exists and the same version can simply be run again.
 
 ## One-time setup
 
@@ -88,8 +100,8 @@ Create the labels the release notes use if they do not exist: `tokens`, `feature
 
 ## If a release fails
 
-- **`check-tag` fails.** Delete the release and the tag, then publish again with a valid tag.
-- **`test` or `build` fails.** Nothing was published. Fix `main`, delete the release and tag, and publish the release again.
+- **`plan`, `test` or `build` fails.** Nothing was published and no tag was created. Fix `main` and run the workflow again.
 - **`publish-pypi` fails with an "invalid-publisher" error.** The pending publisher on PyPI does not match. Check the owner, repository, workflow file name and environment name, then re-run the failed job.
 - **The approval times out.** Re-run the failed jobs from the run page. Nothing was published, so nothing needs cleaning up.
+- **`github-release` fails after PyPI succeeded.** The version is on PyPI but has no tag yet. Re-run that job from the run page rather than starting a new run, so the tag lands on the commit that was published.
 - **A bad version reached PyPI.** A version number can never be reused. Yank the release on PyPI and ship a new patch version.
