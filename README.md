@@ -214,7 +214,7 @@ And some things no lookup settles: a name does not tell you how good a model is.
 
 ## Adding a token
 
-Every meaning whatmodel knows lives in one file, [`whatmodel/tokens.yaml`](whatmodel/tokens.yaml). No Python is needed to teach it a new token:
+Every meaning whatmodel knows lives in one file, [`whatmodel/tokens.yaml`](https://github.com/ShekharBhardwaj/whatmodel/blob/main/whatmodel/tokens.yaml). No Python is needed to teach it a new token:
 
 ```yaml
 - pattern: olmo
@@ -231,8 +231,8 @@ uv run pytest
 uv run whatmodel olmo-2:7b --offline
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers patterns, regex entries and the rules entries must follow.
+[CONTRIBUTING.md](https://github.com/ShekharBhardwaj/whatmodel/blob/main/CONTRIBUTING.md) covers patterns, regex entries and the rules entries must follow.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/ShekharBhardwaj/whatmodel/blob/main/LICENSE).
