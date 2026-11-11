@@ -185,7 +185,7 @@ def test_mixture_of_experts_is_read_from_gguf_metadata() -> None:
         "model_info": {"general.architecture": "qwen3moe", "qwen3moe.expert_count": 128},
     }
     (fact,) = [fact for fact in ollama_facts(show) if fact.key == "architecture"]
-    assert (fact.value, fact.label) == ("moe", "moe: mixture of experts")
+    assert (fact.value, fact.label) == ("moe", "moe - mixture of experts")
 
 
 def test_dense_is_not_claimed_without_full_metadata() -> None:
@@ -243,7 +243,7 @@ def test_quantization_in_the_name_picks_the_matching_file() -> None:
 def test_safetensors_repo() -> None:
     facts = {fact.key: fact for fact in huggingface_facts(HUB_SAFETENSORS)}
     assert facts["quantization"].value == "BF16"
-    assert facts["quantization"].label == "BF16: 16-bit floats (not compressed)"
+    assert facts["quantization"].label == "BF16 - 16-bit floats (not compressed)"
     assert facts["parameter_count"].label == "4B"
     assert facts["tools"].value is False
     assert facts["license"].value == "apache-2.0"

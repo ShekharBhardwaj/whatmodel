@@ -151,7 +151,7 @@ def _described(key: str, raw: str, category: str, source: str) -> Fact:
     reading = get_dictionary().describe(raw, category=category)
     if reading is None:
         return Fact(key, raw, raw, source)
-    label = reading.label if raw.lower() in reading.label.lower() else f"{raw}: {reading.label}"
+    label = reading.label if raw.lower() in reading.label.lower() else f"{raw} - {reading.label}"
     return Fact(key, raw, label, source, reading.explanation)
 
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from rich import box
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
 from rich.table import Table
@@ -26,8 +27,6 @@ from whatmodel.lookup import (
     format_count,
 )
 from whatmodel.parser import KIND_FILE, KIND_HUGGINGFACE, KIND_OLLAMA, ParsedName
-
-LOOKUP_HEADING = "Not in the name"
 
 #: Row order and headings for looked-up facts.
 FACT_HEADINGS = {
@@ -70,25 +69,36 @@ class Row:
     heading: str
     entries: list[tuple[str, str | None]] = field(default_factory=list)
     style: str = ""
+    #: Put each entry on its own line instead of joining them with commas.
+    stacked: bool = False
+    #: Where the row's facts come from: "name", or a lookup source.
+    source: str = "name"
 
 
-def _family_rows(parsed: ParsedName) -> list[tuple[str, str | None]]:
-    """Fold versions into the family they follow: "Gemma 4 (Google)"."""
+def _family_rows(parsed: ParsedName) -> tuple[list[tuple[str, str | None]], set[int]]:
+    """Fold a version into the family it directly follows: "Gemma 4 (Google)".
+
+    Returns the entries and the positions of the version tokens that were used.
+    A version elsewhere in the name, such as a trailing "v2", belongs to the
+    model as a whole and is left for the Version row.
+    """
     groups: list[dict[str, object]] = []
-    for token in parsed.tokens:
+    attached: set[int] = set()
+    open_group: dict[str, object] | None = None
+    for position, token in enumerate(parsed.tokens):
         reading = token.reading
-        if reading is None:
-            continue
-        if reading.category == "family":
-            match = next((g for g in groups if g["value"] == reading.value), None)
-            if match is None:
-                groups.append({"value": reading.value, "reading": reading, "versions": []})
-            else:
-                groups.append(groups.pop(groups.index(match)))
-        elif reading.category == "version" and groups:
-            versions = groups[-1]["versions"]
+        if reading is not None and reading.category == "family":
+            open_group = next((g for g in groups if g["value"] == reading.value), None)
+            if open_group is None:
+                open_group = {"value": reading.value, "reading": reading, "versions": []}
+                groups.append(open_group)
+        elif reading is not None and reading.category == "version" and open_group is not None:
+            versions = open_group["versions"]
             assert isinstance(versions, list)
             versions.append(reading)
+            attached.add(position)
+        else:
+            open_group = None
     entries: list[tuple[str, str | None]] = []
     for group in groups:
         reading, versions = group["reading"], group["versions"]
@@ -99,27 +109,30 @@ def _family_rows(parsed: ParsedName) -> list[tuple[str, str | None]]:
             text = f"{text} ({reading.maker})"
         notes = [reading.explanation, *(version.explanation for version in versions)]
         entries.append((text, " ".join(notes)))
-    return entries
+    return entries, attached
 
 
 def name_rows(parsed: ParsedName, dictionary: Dictionary | None = None) -> list[Row]:
     """Rows for everything the name itself says, in dictionary category order."""
     dictionary = dictionary or get_dictionary()
-    has_family = parsed.family is not None
     by_heading: dict[str, Row] = {}
 
     def row(heading: str) -> Row:
         return by_heading.setdefault(heading, Row(heading))
 
-    readings = [token.reading for token in parsed.tokens if token.reading is not None]
+    family_entries, attached = _family_rows(parsed)
+    readings = [
+        token.reading
+        for position, token in enumerate(parsed.tokens)
+        if token.reading is not None and position not in attached
+    ]
     readings += [item.reading for item in parsed.implied]
     for category in dictionary.categories.values():
         if category.id == "family":
-            entries = _family_rows(parsed)
-            if entries:
-                row(category.heading).entries.extend(entries)
-            continue
-        if category.id == "version" and has_family:
+            if family_entries:
+                found = row(category.heading)
+                found.entries.extend(family_entries)
+                found.stacked = True
             continue
         for reading in readings:
             if reading.category == category.id:
@@ -130,15 +143,14 @@ def name_rows(parsed: ParsedName, dictionary: Dictionary | None = None) -> list[
     rows = [found for found in by_heading.values() if found.entries]
     for token in parsed.ambiguous:
         options = [
-            (f"{reading.label} [{dictionary.categories[reading.category].heading.lower()}]", None)
+            f"{reading.label} [{dictionary.categories[reading.category].heading.lower()}]"
             for reading in token.readings
         ]
-        first, *rest = options
         entries = [
-            (f"{token.text}: {first[0]}", None),
-            *((f"or {text}", note) for text, note in rest),
+            (f"{token.text}: {options[0]}", None),
+            *((f"or {text}", None) for text in options[1:]),
         ]
-        rows.append(Row("Ambiguous", entries, style="yellow"))
+        rows.append(Row("Ambiguous", entries, style="yellow", stacked=True))
     if parsed.unknown:
         note = "Not in the token dictionary, so no meaning is guessed."
         rows.append(Row("Unknown", [(", ".join(parsed.unknown), note)], style="yellow"))
@@ -172,7 +184,7 @@ def lookup_rows(info: ModelInfo) -> list[Row]:
         if _name_already_says(info.parsed, fact):
             continue
         heading = FACT_HEADINGS.get(fact.key, fact.key.replace("_", " ").capitalize())
-        rows.append(Row(heading, [(fact.label, fact.explanation)]))
+        rows.append(Row(heading, [(fact.label, fact.explanation)], source=fact.source))
     return rows
 
 
@@ -186,55 +198,72 @@ def lookup_note(info: ModelInfo) -> str | None:
     return "; ".join(reasons) if reasons else None
 
 
-def _kinds_line(parsed: ParsedName) -> str | None:
+def _kinds_line(info: ModelInfo) -> str | None:
+    """Name the possible formats, unless a lookup has settled which one it is."""
+    parsed = info.parsed
     if len(parsed.kinds) < 2:
+        return None
+    found = [source for source, status in info.lookups.items() if status == STATUS_OK]
+    if len(found) == 1:
         return None
     phrases = [_KIND_PHRASES.get(kind, kind) for kind in parsed.kinds]
     if parsed.tag_is_default and KIND_OLLAMA in parsed.kinds:
         index = parsed.kinds.index(KIND_OLLAMA)
         phrases[index] = f"{phrases[index]} (tag {parsed.tag})"
-    return f"Could be {' or '.join(phrases)}; the name alone does not say which."
+    return " or ".join(phrases)
 
 
-def _table(rows: list[Row], verbose: bool) -> Table:
-    table = Table.grid(padding=(0, 2))
-    table.add_column(no_wrap=True)
-    table.add_column(overflow="fold")
+def _add_rows(table: Table, rows: list[Row], verbose: bool) -> None:
     for found in rows:
-        cell = Text()
-        for index, (label, explanation) in enumerate(found.entries):
-            if index:
-                cell.append("\n" if verbose or found.heading == "Ambiguous" else ", ")
-            cell.append(label, style=found.style)
-            if verbose and explanation:
-                cell.append(f"\n{explanation}", style="dim")
-        table.add_row(Text(found.heading, style="bold" if not found.style else found.style), cell)
-    return table
+        joiner = "\n" if found.stacked else ", "
+        cells = [
+            Text(found.heading, style=found.style or "cyan"),
+            Text(joiner.join(label for label, _ in found.entries), style=found.style),
+            Text(_SOURCE_NAMES.get(found.source, found.source), style="dim"),
+        ]
+        if verbose:
+            notes = [explanation for _, explanation in found.entries if explanation]
+            cells.append(Text("\n".join(notes), style="dim"))
+        table.add_row(*cells)
 
 
 def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
-    """Build the text block for one model."""
-    parsed = info.parsed
-    parts: list[RenderableType] = [Text(parsed.raw, style="bold cyan")]
-    kinds = _kinds_line(parsed)
-    if kinds:
-        parts.append(Text(kinds, style="dim"))
-    parts.append(Text())
-    rows = name_rows(parsed)
-    if rows:
-        parts.append(_table(rows, verbose))
+    """Build one model's table: a row per fact, with a column saying where it came from.
 
+    Rows read from the name come first. Looked-up rows follow after a divider,
+    and the Source column keeps the two apart on every row.
+    """
+    parsed = info.parsed
+    table = Table(
+        title=parsed.raw,
+        title_style="bold",
+        title_justify="left",
+        box=box.SQUARE,
+        show_lines=True,
+        header_style="bold",
+        border_style="dim",
+    )
+    table.add_column("Field", no_wrap=True)
+    table.add_column("Value", overflow="fold")
+    table.add_column("Source", no_wrap=True)
+    if verbose:
+        table.add_column("What it means", overflow="fold")
+
+    _add_rows(table, name_rows(parsed), verbose)
     looked_up = lookup_rows(info)
-    note = lookup_note(info)
     if looked_up:
-        sources = sorted({fact.source for fact in info.facts})
-        origin = ", ".join(_SOURCE_NAMES.get(source, source) for source in sources)
-        heading = Text(LOOKUP_HEADING, style="bold")
-        heading.append(f"  (from {origin})", style="dim")
-        parts += [Text(), heading, _table(looked_up, verbose)]
-    elif note and not any(status == STATUS_OK for status in info.lookups.values()):
-        parts += [Text(), Text(f"Nothing looked up: {note}.", style="dim")]
-    return Padding(Group(*parts), (1, 2, 0, 2))
+        table.add_section()
+        _add_rows(table, looked_up, verbose)
+
+    captions: list[str] = []
+    kinds = _kinds_line(info)
+    if kinds:
+        captions.append(f"Read as {kinds}.")
+    note = lookup_note(info)
+    if note and not looked_up and STATUS_OK not in info.lookups.values():
+        captions.append(f"Nothing looked up: {note}.")
+    notes = [Text(caption, style="dim") for caption in captions]
+    return Padding(Group(table, *notes), (1, 0, 0, 0))
 
 
 def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
@@ -265,7 +294,6 @@ def print_info(console: Console, info: ModelInfo, *, verbose: bool = False) -> N
 
 __all__ = [
     "FACT_HEADINGS",
-    "LOOKUP_HEADING",
     "Row",
     "lookup_note",
     "lookup_rows",

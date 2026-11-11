@@ -13,7 +13,7 @@ import whatmodel
 from whatmodel import Fact, ModelInfo, parse
 from whatmodel.cli import app
 from whatmodel.lookup import OllamaUnavailableError
-from whatmodel.render import LOOKUP_HEADING, lookup_note, lookup_rows, name_rows, render_info
+from whatmodel.render import lookup_note, lookup_rows, name_rows, render_info
 
 runner = CliRunner()
 
@@ -22,6 +22,12 @@ def text_of(info: ModelInfo, *, verbose: bool = False) -> str:
     buffer = io.StringIO()
     Console(file=buffer, width=100, color_system=None).print(render_info(info, verbose=verbose))
     return "\n".join(line.rstrip() for line in buffer.getvalue().splitlines())
+
+
+def cells_of(info: ModelInfo, *, verbose: bool = False) -> list[list[str]]:
+    """The table as a list of rows, each a list of cell texts."""
+    lines = [line for line in text_of(info, verbose=verbose).splitlines() if "\u2502" in line]
+    return [[cell.strip() for cell in line.strip("\u2502").split("\u2502")] for line in lines]
 
 
 def rows_of(name: str) -> dict[str, str]:
@@ -45,48 +51,58 @@ LOOKED_UP = ModelInfo(
 # ------------------------------------------------------------------ render ----
 
 
-def test_layout_matches_the_spec_example() -> None:
+def test_layout() -> None:
     assert text_of(LOOKED_UP) == "\n".join(
         [
             "",
-            "  gemma4:e2b-it-qat",
-            "",
-            "  Family       Gemma 4 (Google)",
-            "  Size         effective 2B parameters",
-            "  Tuning       instruction tuned (ready for chat)",
-            "  Compression  quantization-aware trained",
-            "  Runs         locally",
-            "",
-            "  Not in the name  (from local Ollama)",
-            "  Compression  4-bit (Q4_0)",
-            "  Context      128k tokens",
-            "  Tools        yes",
-            "  License      Apache License, Version 2.0",
+            "gemma4:e2b-it-qat",
+            "┌─────────────┬────────────────────────────────────┬──────────────┐",
+            "│ Field       │ Value                              │ Source       │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Family      │ Gemma 4 (Google)                   │ name         │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Size        │ effective 2B parameters            │ name         │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Tuning      │ instruction tuned (ready for chat) │ name         │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Compression │ quantization-aware trained         │ name         │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Runs        │ locally                            │ name         │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Compression │ 4-bit (Q4_0)                       │ local Ollama │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Context     │ 128k tokens                        │ local Ollama │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ Tools       │ yes                                │ local Ollama │",
+            "├─────────────┼────────────────────────────────────┼──────────────┤",
+            "│ License     │ Apache License, Version 2.0        │ local Ollama │",
+            "└─────────────┴────────────────────────────────────┴──────────────┘",
         ]
     )
 
 
-def test_name_facts_and_lookup_facts_are_separate_blocks() -> None:
-    text = text_of(LOOKED_UP)
-    name_block, lookup_block = text.split(LOOKUP_HEADING)
-    assert "Gemma 4 (Google)" in name_block
-    assert "128k tokens" in lookup_block
-    assert "128k tokens" not in name_block
+def test_every_row_says_where_its_fact_came_from() -> None:
+    rows = cells_of(LOOKED_UP)
+    assert rows[0] == ["Field", "Value", "Source"]
+    sources = [row[2] for row in rows[1:]]
+    # Name rows come first, looked-up rows after, and the two never interleave.
+    assert sources == ["name"] * 5 + ["local Ollama"] * 4
+    assert ["Family", "Gemma 4 (Google)", "name"] in rows
+    assert ["Context", "128k tokens", "local Ollama"] in rows
 
 
-def test_offline_output_has_no_lookup_block() -> None:
+def test_offline_output_has_only_name_rows() -> None:
     info = ModelInfo(parse("qwen3.5:4b"), (), {"ollama": "skipped", "huggingface": "skipped"})
-    text = text_of(info)
-    assert LOOKUP_HEADING not in text
-    assert "Nothing looked up" not in text
-    assert "Qwen 3.5 (Alibaba)" in text
+    assert {row[2] for row in cells_of(info)[1:]} == {"name"}
+    assert "Nothing looked up" not in text_of(info)
+    assert "Qwen 3.5 (Alibaba)" in text_of(info)
 
 
 def test_failed_lookup_leaves_one_quiet_line() -> None:
     info = ModelInfo(parse("qwen3.5:4b"), (), {"ollama": "unreachable", "huggingface": "timeout"})
-    assert lookup_note(info) == ("local Ollama is not running; Hugging Face did not answer in time")
+    assert lookup_note(info) == "local Ollama is not running; Hugging Face did not answer in time"
     assert "Nothing looked up: local Ollama is not running" in text_of(info)
-    assert "4B parameters" in text_of(info)
+    assert ["Size", "4B parameters", "name"] in cells_of(info)
 
 
 def test_lookup_facts_that_repeat_the_name_are_left_out() -> None:
@@ -108,7 +124,8 @@ def test_lookup_facts_that_repeat_the_name_are_left_out() -> None:
     [
         ("kimi-k3.1-pro:cloud", "Family", "Kimi K3.1 (Moonshot AI)"),
         ("kimi-k3.1-pro:cloud", "Runs", "in the cloud (remote, not on your machine)"),
-        ("mistralai/Mistral-7B-Instruct-v0.3", "Family", "Mistral v0.3 (Mistral AI)"),
+        ("mistralai/Mistral-7B-Instruct-v0.3", "Family", "Mistral (Mistral AI)"),
+        ("mistralai/Mistral-7B-Instruct-v0.3", "Version", "v0.3"),
         (
             "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
             "Family",
@@ -127,20 +144,40 @@ def test_rows(name: str, heading: str, expected: str) -> None:
 
 
 def test_ambiguous_token_shows_every_reading() -> None:
-    text = text_of(ModelInfo(parse("qwen-max-0725")))
-    assert "Ambiguous  0725: dated 07-25 (month-day) [build]" in text
-    assert "or released 2025-07 [build]" in text
+    rows = cells_of(ModelInfo(parse("qwen-max-0725")))
+    assert ["Ambiguous", "0725: dated 07-25 (month-day) [build]", "name"] in rows
+    assert ["", "or released 2025-07 [build]", ""] in rows
 
 
 def test_ambiguous_name_format_shows_both_readings() -> None:
     text = text_of(ModelInfo(parse("bartowski/Qwen3-30B-A3B-Instruct-GGUF")))
-    assert "Could be a Hugging Face repo or an Ollama model (tag latest)" in text
+    assert "Read as a Hugging Face repo or an Ollama model (tag latest)." in text
 
 
-def test_verbose_adds_explanations() -> None:
+def test_lookup_that_settles_the_format_drops_the_both_readings_line() -> None:
+    parsed = parse("bartowski/Qwen3-30B-A3B-Instruct-GGUF")
+    settled = ModelInfo(parsed, (), {"ollama": "not_found", "huggingface": "ok"})
+    assert "Read as" not in text_of(settled)
+    unsettled = ModelInfo(parsed, (), {"ollama": "not_found", "huggingface": "not_found"})
+    assert "Read as" in text_of(unsettled)
+
+
+def test_name_with_two_families() -> None:
+    name = "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2"
+    rows = rows_of(name)
+    assert rows["Family"] == "Qwen 3.5 (Alibaba) | Claude 4.6 (Anthropic)"
+    assert rows["Version"] == "v2"  # the trailing version belongs to neither family
+    assert rows["Runs"] == "locally"  # a hosted family named as a source implies nothing
+    cells = cells_of(ModelInfo(parse(name)))
+    assert ["Family", "Qwen 3.5 (Alibaba)", "name"] in cells
+    assert ["", "Claude 4.6 (Anthropic)", ""] in cells  # each family on its own line
+
+
+def test_verbose_adds_a_column_of_explanations() -> None:
+    assert cells_of(LOOKED_UP, verbose=True)[0] == ["Field", "Value", "Source", "What it means"]
     plain, verbose = text_of(LOOKED_UP), text_of(LOOKED_UP, verbose=True)
-    assert "Trained with compression in the loop" not in plain
-    assert "Trained with compression in the loop" in verbose
+    assert "Trained with compression in the" not in plain
+    assert "Trained with compression in the" in verbose
     assert "Compressed." in verbose
 
 
@@ -164,7 +201,7 @@ def test_explain_one_name_offline() -> None:
     assert result.exit_code == 0
     assert "Qwen 3.5 (Alibaba)" in result.output
     assert "4B parameters" in result.output
-    assert LOOKUP_HEADING not in result.output
+    assert "Ollama" not in result.output
 
 
 def test_flags_work_before_the_name_too() -> None:
@@ -204,7 +241,7 @@ def test_lookup_results_reach_the_output(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("whatmodel.cli.explain", fake_explain)
     result = runner.invoke(app, ["gemma4:e2b-it-qat", "--ollama-url", "box:9999"])
     assert result.exit_code == 0
-    assert "Not in the name" in result.output
+    assert "local Ollama" in result.output
     assert "128k tokens" in result.output
     assert calls == [
         {"name": "gemma4:e2b-it-qat", "offline": False, "ollama_url": "http://box:9999"}

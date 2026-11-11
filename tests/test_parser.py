@@ -364,6 +364,13 @@ def test_hosted_family_implies_cloud_instead_of_the_local_default() -> None:
     assert "local" not in parsed.values("hosting")
 
 
+def test_rival_families_imply_nothing() -> None:
+    parsed = parse("Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+    assert parsed.values("family") == ("qwen", "claude")
+    assert parsed.hosting == "local"
+    assert parsed.unknown == ()
+
+
 def test_architecture_is_not_claimed_without_evidence() -> None:
     assert parse("qwen3.5:4b").architecture is None
 

@@ -370,6 +370,23 @@ def _tokenize(text: str, part: str, dictionary: Dictionary) -> list[Token]:
     return tokens
 
 
+def _has_rival(token: Token, tokens: Sequence[Token]) -> bool:
+    """True when the name holds a different token of the same category.
+
+    A name such as "Qwen3.5-9B-Claude-4.6-Opus-Distilled" mentions two families.
+    Nothing says which one the model is, so neither is allowed to imply anything.
+    """
+    reading = token.reading
+    if reading is None:
+        return False
+    return any(
+        other.reading is not None
+        and other.reading.category == reading.category
+        and other.reading.value != reading.value
+        for other in tokens
+    )
+
+
 def _implied(
     structure: _Structure, tokens: Sequence[Token], dictionary: Dictionary
 ) -> list[Implied]:
@@ -378,10 +395,11 @@ def _implied(
     implied: list[Implied] = []
 
     # 1. Tokens whose dictionary entry says they also settle another category.
-    #    Unknown and ambiguous tokens imply nothing.
+    #    Unknown and ambiguous tokens imply nothing, and neither does a token that
+    #    shares its category with a different one (see _has_rival).
     for token in tokens:
         reading = token.reading
-        if reading is None:
+        if reading is None or _has_rival(token, tokens):
             continue
         for category, target in reading.implies:
             found = dictionary.describe(target, category=category)

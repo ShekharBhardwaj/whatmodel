@@ -27,50 +27,73 @@ The outputs below are pasted from real runs.
 ```console
 $ whatmodel gemma4:e2b-it-qat
 
-  gemma4:e2b-it-qat
-
-  Family       Gemma 4 (Google)
-  Size         effective 2B parameters
-  Tuning       instruction tuned (ready for chat)
-  Compression  quantization-aware trained
-  Runs         locally
-
-  Not in the name  (from local Ollama)
-  Parameters    4.6B
-  Compression   4-bit (Q4_0)
-  Architecture  dense
-  Context       128k tokens
-  Tools         yes
-  Vision        yes
-  Thinking      yes
-  License       Apache License, Version 2.0
-  File size     4.3 GB
+gemma4:e2b-it-qat
+┌──────────────┬────────────────────────────────────┬──────────────┐
+│ Field        │ Value                              │ Source       │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Family       │ Gemma 4 (Google)                   │ name         │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Size         │ effective 2B parameters            │ name         │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Tuning       │ instruction tuned (ready for chat) │ name         │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Compression  │ quantization-aware trained         │ name         │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Runs         │ locally                            │ name         │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Parameters   │ 4.6B                               │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Compression  │ 4-bit (Q4_0)                       │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Architecture │ dense                              │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Context      │ 128k tokens                        │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Tools        │ yes                                │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Vision       │ yes                                │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ Thinking     │ yes                                │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ License      │ Apache License, Version 2.0        │ local Ollama │
+├──────────────┼────────────────────────────────────┼──────────────┤
+│ File size    │ 4.3 GB                             │ local Ollama │
+└──────────────┴────────────────────────────────────┴──────────────┘
 ```
 
-The top block is read from the name alone. The second block is looked up, here from the Ollama running on the same machine.
+The Source column says where each row came from: `name` rows are read from the name alone, and the rest are looked up, here from the Ollama running on the same machine.
 
 ### A Hugging Face repo
 
 ```console
 $ whatmodel bartowski/Qwen_Qwen3-30B-A3B-GGUF
 
-  bartowski/Qwen_Qwen3-30B-A3B-GGUF
-  Could be a Hugging Face repo or an Ollama model (tag latest); the name
-  alone does not say which.
-
-  Publisher     bartowski (community GGUF conversions)
-  Family        Qwen 3 (Alibaba)
-  Size          30B parameters, 3B active per token
-  Architecture  mixture of experts
-  Format        GGUF (for llama.cpp, Ollama and LM Studio)
-  Runs          locally
-
-  Not in the name  (from Hugging Face)
-  Parameters  30.5B
-  Context     32k tokens
-  Tools       yes (judged from the chat template)
-  License     apache-2.0
-  File size   8.1 GB to 39.7 GB, 28 GGUF files
+bartowski/Qwen_Qwen3-30B-A3B-GGUF
+┌──────────────┬────────────────────────────────────────────┬──────────────┐
+│ Field        │ Value                                      │ Source       │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Publisher    │ bartowski (community GGUF conversions)     │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Family       │ Qwen 3 (Alibaba)                           │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Size         │ 30B parameters, 3B active per token        │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Architecture │ mixture of experts                         │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Format       │ GGUF (for llama.cpp, Ollama and LM Studio) │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Runs         │ locally                                    │ name         │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Parameters   │ 30.5B                                      │ Hugging Face │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Context      │ 32k tokens                                 │ Hugging Face │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ Tools        │ yes (judged from the chat template)        │ Hugging Face │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ License      │ apache-2.0                                 │ Hugging Face │
+├──────────────┼────────────────────────────────────────────┼──────────────┤
+│ File size    │ 8.1 GB to 39.7 GB, 28 GGUF files           │ Hugging Face │
+└──────────────┴────────────────────────────────────────────┴──────────────┘
 ```
 
 ### A GGUF file name
@@ -78,17 +101,25 @@ $ whatmodel bartowski/Qwen_Qwen3-30B-A3B-GGUF
 ```console
 $ whatmodel Llama-3-8B-Instruct.Q4_K_M.gguf
 
-  Llama-3-8B-Instruct.Q4_K_M.gguf
-
-  Family       Llama 3 (Meta)
-  Size         8B parameters
-  Tuning       instruction tuned (ready for chat)
-  Compression  4-bit (Q4_K_M, the balanced variant)
-  Format       GGUF (for llama.cpp, Ollama and LM Studio)
-  Runs         locally
+Llama-3-8B-Instruct.Q4_K_M.gguf
+┌─────────────┬────────────────────────────────────────────┬────────┐
+│ Field       │ Value                                      │ Source │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Family      │ Llama 3 (Meta)                             │ name   │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Size        │ 8B parameters                              │ name   │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Tuning      │ instruction tuned (ready for chat)         │ name   │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Compression │ 4-bit (Q4_K_M, the balanced variant)       │ name   │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Format      │ GGUF (for llama.cpp, Ollama and LM Studio) │ name   │
+├─────────────┼────────────────────────────────────────────┼────────┤
+│ Runs        │ locally                                    │ name   │
+└─────────────┴────────────────────────────────────────────┴────────┘
 ```
 
-A file name has nothing to look up, so only the first block appears.
+A file name has nothing to look up, so every row comes from the name.
 
 ## Usage
 
@@ -104,7 +135,7 @@ whatmodel tokens              print the token dictionary
 | `--json` | Print JSON. One name gives an object, several names give a list. |
 | `--offline` | Read the name only and make no network requests. |
 | `--ollama-url URL` | Where Ollama listens. Defaults to `http://localhost:11434`, or `OLLAMA_HOST` if set. |
-| `--verbose`, `-v` | Add a one-sentence explanation under each row. |
+| `--verbose`, `-v` | Add a column with a one-sentence explanation of each row. |
 | `--version` | Print the version. |
 
 Accepted name formats:
@@ -122,17 +153,24 @@ whatmodel never guesses. A token that is not in its dictionary is reported as un
 ```console
 $ whatmodel qwen-max-0725 --offline
 
-  qwen-max-0725
-
-  Family     Qwen (Alibaba)
-  Tier       max tier (the most capable option)
-  Build      latest (the default build)
-  Runs       locally
-  Ambiguous  0725: dated 07-25 (month-day) [build]
-             or released 2025-07 [build]
+qwen-max-0725
+┌───────────┬───────────────────────────────────────┬────────┐
+│ Field     │ Value                                 │ Source │
+├───────────┼───────────────────────────────────────┼────────┤
+│ Family    │ Qwen (Alibaba)                        │ name   │
+├───────────┼───────────────────────────────────────┼────────┤
+│ Tier      │ max tier (the most capable option)    │ name   │
+├───────────┼───────────────────────────────────────┼────────┤
+│ Build     │ latest (the default build)            │ name   │
+├───────────┼───────────────────────────────────────┼────────┤
+│ Runs      │ locally                               │ name   │
+├───────────┼───────────────────────────────────────┼────────┤
+│ Ambiguous │ 0725: dated 07-25 (month-day) [build] │ name   │
+│           │ or released 2025-07 [build]           │        │
+└───────────┴───────────────────────────────────────┴────────┘
 ```
 
-The same applies to a name such as `org/model` with no tag, which fits both a Hugging Face repo and an Ollama model.
+The same applies to a name such as `org/model` with no tag, which fits both a Hugging Face repo and an Ollama model. Both readings are named unless a lookup settles which one it is.
 
 ### Where the facts come from
 
