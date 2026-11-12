@@ -100,6 +100,8 @@ Create the labels the release notes use if they do not exist: `tokens`, `feature
 
 ## If a release fails
 
+**"This commit is already released as vX.Y.Z."** The workflow was run twice on the same commit. Nothing was built or published. Push a new commit first; a release with no changes has nothing to ship.
+
 - **`plan`, `test` or `build` fails.** Nothing was published and no tag was created. Fix `main` and run the workflow again.
 - **`publish-pypi` fails with an "invalid-publisher" error.** The pending publisher on PyPI does not match. Check the owner, repository, workflow file name and environment name, then re-run the failed job.
 - **The approval times out.** Re-run the failed jobs from the run page. Nothing was published, so nothing needs cleaning up.

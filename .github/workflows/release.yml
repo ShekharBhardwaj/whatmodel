@@ -75,6 +75,11 @@ jobs:
               echo "::error::Releases are cut from main. This run was started on $REF."
               exit 1
             fi
+            released="$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            if [[ -n "$released" && "$REHEARSAL" != "true" ]]; then
+              echo "::error::This commit is already released as $released. Push a new commit before releasing again."
+              exit 1
+            fi
             latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
             latest="${latest:-v0.0.0}"
             IFS=. read -r major minor patch <<< "${latest#v}"
@@ -138,7 +143,12 @@ jobs:
       - name: Tag this commit locally
         run: git rev-parse -q --verify "refs/tags/${TAG}" > /dev/null || git tag "$TAG"
 
+      # The version is also passed in directly. When the commit carries another
+      # tag as well (a rehearsal of an already released commit), git alone
+      # cannot tell hatch-vcs which of the two tags to use.
       - name: Build the sdist and wheel
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.plan.outputs.version }}
         run: uv build
 
       - name: Check that the built version matches the tag
