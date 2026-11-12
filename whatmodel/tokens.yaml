@@ -93,11 +93,9 @@ categories:
     description: Which snapshot or release stage of the model this is.
   hosting:
     heading: Runs
-    description: Where the model actually runs.
-    default:
-      label: locally
-      value: local
-      explanation: Nothing in the name marks it as hosted, so the weights download and run on your own machine.
+    # No default on purpose: a name that says nothing about hosting proves
+    # nothing about where the model runs. Only a token or a lookup may say so.
+    description: Where the model runs, when the name or a lookup establishes it.
 
 tokens:
   # ---------------------------------------------------------------- host ----

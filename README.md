@@ -39,7 +39,7 @@ gemma4:e2b-it-qat
 ├──────────────┼────────────────────────────────────┼──────────────┤
 │ Compression  │ quantization-aware trained         │ name         │
 ├──────────────┼────────────────────────────────────┼──────────────┤
-│ Runs         │ locally                            │ name         │
+│ Runs         │ locally, installed in Ollama here  │ local Ollama │
 ├──────────────┼────────────────────────────────────┼──────────────┤
 │ Parameters   │ 4.6B                               │ local Ollama │
 ├──────────────┼────────────────────────────────────┼──────────────┤
@@ -82,8 +82,6 @@ bartowski/Qwen_Qwen3-30B-A3B-GGUF
 ├──────────────┼────────────────────────────────────────────┼──────────────┤
 │ Format       │ GGUF (for llama.cpp, Ollama and LM Studio) │ name         │
 ├──────────────┼────────────────────────────────────────────┼──────────────┤
-│ Runs         │ locally                                    │ name         │
-├──────────────┼────────────────────────────────────────────┼──────────────┤
 │ Parameters   │ 30.5B                                      │ Hugging Face │
 ├──────────────┼────────────────────────────────────────────┼──────────────┤
 │ Context      │ 32k tokens                                 │ Hugging Face │
@@ -114,8 +112,6 @@ Llama-3-8B-Instruct.Q4_K_M.gguf
 │ Compression │ 4-bit (Q4_K_M, the balanced variant)       │ name   │
 ├─────────────┼────────────────────────────────────────────┼────────┤
 │ Format      │ GGUF (for llama.cpp, Ollama and LM Studio) │ name   │
-├─────────────┼────────────────────────────────────────────┼────────┤
-│ Runs        │ locally                                    │ name   │
 └─────────────┴────────────────────────────────────────────┴────────┘
 ```
 
@@ -161,14 +157,13 @@ qwen-max-0725
 ├───────────┼───────────────────────────────────────┼────────┤
 │ Tier      │ max tier (the most capable option)    │ name   │
 ├───────────┼───────────────────────────────────────┼────────┤
-│ Build     │ latest (the default build)            │ name   │
-├───────────┼───────────────────────────────────────┼────────┤
-│ Runs      │ locally                               │ name   │
-├───────────┼───────────────────────────────────────┼────────┤
 │ Ambiguous │ 0725: dated 07-25 (month-day) [build] │ name   │
 │           │ or released 2025-07 [build]           │        │
 └───────────┴───────────────────────────────────────┴────────┘
+No tag in the name. Pulled with Ollama, it would mean latest.
 ```
+
+The same rule covers what a name leaves out. A name alone cannot show where a model runs or which build you would get, so whatmodel adds a Runs row only when the name says so (a `cloud` tag, or a family that is only offered as a hosted service) or a lookup confirms it.
 
 The same applies to a name such as `org/model` with no tag, which fits both a Hugging Face repo and an Ollama model. Both readings are named unless a lookup settles which one it is.
 

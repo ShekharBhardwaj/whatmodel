@@ -116,7 +116,6 @@ def test_default_tag_is_implied_for_a_bare_ollama_name() -> None:
     assert parsed.build == "latest"
     assert [(item.reading.category, item.reading.value) for item in parsed.implied] == [
         ("build", "latest"),
-        ("hosting", "local"),
     ]
     assert "no tag" in parsed.implied[0].reason
 
@@ -336,15 +335,18 @@ def test_unambiguous_date_stamp() -> None:
 # ----------------------------------------------------------------- implied ----
 
 
-def test_hosting_defaults_to_local_and_says_why() -> None:
-    parsed = parse("qwen3.5:4b")
-    assert parsed.hosting == "local"
-    (item,) = parsed.implied
-    assert item.reading.label == "locally"
-    assert item.reason == "the name has no hosting token"
+@pytest.mark.parametrize(
+    "name",
+    ["qwen3.5:4b", "qwen-max-0725", "deepseek/deepseek-v4.1-flash", "llama3", "model.gguf"],
+)
+def test_hosting_is_not_assumed_when_the_name_is_silent(name: str) -> None:
+    parsed = parse(name)
+    assert parsed.hosting is None
+    assert parsed.values("hosting") == ()
+    assert all(item.reading.category != "hosting" for item in parsed.implied)
 
 
-def test_cloud_tag_overrides_the_default() -> None:
+def test_cloud_tag_says_where_the_model_runs() -> None:
     parsed = parse("gpt-oss:120b-cloud")
     assert parsed.hosting == "cloud"
     assert parsed.implied == ()
@@ -358,7 +360,7 @@ def test_token_can_imply_another_category() -> None:
     assert implied["architecture"].reason == "implied by 'A3B' in the name"
 
 
-def test_hosted_family_implies_cloud_instead_of_the_local_default() -> None:
+def test_hosted_family_implies_cloud() -> None:
     parsed = parse("claude-3-5-sonnet-20241022")
     assert parsed.hosting == "cloud"
     assert "local" not in parsed.values("hosting")
@@ -367,7 +369,7 @@ def test_hosted_family_implies_cloud_instead_of_the_local_default() -> None:
 def test_rival_families_imply_nothing() -> None:
     parsed = parse("Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2")
     assert parsed.values("family") == ("qwen", "claude")
-    assert parsed.hosting == "local"
+    assert parsed.hosting is None
     assert parsed.unknown == ()
 
 

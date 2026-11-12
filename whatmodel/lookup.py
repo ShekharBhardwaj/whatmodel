@@ -292,6 +292,9 @@ def ollama_facts(show: Mapping[str, Any], summary: Mapping[str, Any] | None = No
     remote = _text(show.get("remote_host")) or _text(summary.get("remote_host"))
     if remote is not None:
         facts.append(Fact("hosting", "cloud", f"remotely, on {remote}", source))
+    elif size is not None:
+        # The weights are on this machine's disk, so this is observed, not assumed.
+        facts.append(Fact("hosting", "local", "locally, installed in Ollama here", source))
     return facts
 
 

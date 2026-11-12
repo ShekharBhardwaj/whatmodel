@@ -182,11 +182,17 @@ def test_implied_tokens_resolve(dictionary: Dictionary) -> None:
             assert dictionary.describe(token, category=category) is not None
 
 
-def test_category_default(dictionary: Dictionary) -> None:
-    default = dictionary.categories["hosting"].default
+def test_no_category_assumes_a_value(dictionary: Dictionary) -> None:
+    # A default would present an assumption as a fact read from the name.
+    assert [c.id for c in dictionary.categories.values() if c.default is not None] == []
+
+
+def test_category_default_is_still_supported() -> None:
+    data = _minimal()
+    data["categories"]["host"]["default"] = "somewhere"
+    default = build_dictionary(data).categories["host"].default
     assert default is not None
-    assert default.label == "locally"
-    assert default.value == "local"
+    assert (default.label, default.value) == ("somewhere", "somewhere")
 
 
 # ---------------------------------------------------------------- matching ----

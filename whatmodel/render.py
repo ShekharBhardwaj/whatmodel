@@ -26,7 +26,13 @@ from whatmodel.lookup import (
     ModelInfo,
     format_count,
 )
-from whatmodel.parser import KIND_FILE, KIND_HUGGINGFACE, KIND_OLLAMA, ParsedName
+from whatmodel.parser import (
+    DEFAULT_TAG_REASON,
+    KIND_FILE,
+    KIND_HUGGINGFACE,
+    KIND_OLLAMA,
+    ParsedName,
+)
 
 #: Row order and headings for looked-up facts.
 FACT_HEADINGS = {
@@ -126,7 +132,9 @@ def name_rows(parsed: ParsedName, dictionary: Dictionary | None = None) -> list[
         for position, token in enumerate(parsed.tokens)
         if token.reading is not None and position not in attached
     ]
-    readings += [item.reading for item in parsed.implied]
+    # The default tag is left out: it holds only if the name is used with Ollama,
+    # which the name cannot establish. render_info says so in a note instead.
+    readings += [item.reading for item in parsed.implied if item.reason != DEFAULT_TAG_REASON]
     for category in dictionary.categories.values():
         if category.id == "family":
             if family_entries:
@@ -259,6 +267,8 @@ def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
     kinds = _kinds_line(info)
     if kinds:
         captions.append(f"Read as {kinds}.")
+    if parsed.tag_is_default and parsed.kinds == (KIND_OLLAMA,):
+        captions.append(f"No tag in the name. Pulled with Ollama, it would mean {parsed.tag}.")
     note = lookup_note(info)
     if note and not looked_up and STATUS_OK not in info.lookups.values():
         captions.append(f"Nothing looked up: {note}.")

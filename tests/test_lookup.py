@@ -142,6 +142,7 @@ def test_ollama_facts_come_from_show_and_tags() -> None:
         "thinking": (True, "ollama"),
         "license": ("Apache License, Version 2.0", "ollama"),
         "file_size": (4336358185, "ollama"),
+        "hosting": ("local", "ollama"),
     }
     labels = {fact.key: fact.label for fact in info.facts}
     assert labels["context_length"] == "128k tokens"
@@ -201,6 +202,15 @@ def test_capabilities_are_not_guessed_when_absent() -> None:
 def test_remote_model_is_reported_as_hosted() -> None:
     facts = ollama_facts({}, {"remote_host": "https://ollama.com", "size": 0})
     assert [(fact.key, fact.value) for fact in facts] == [("hosting", "cloud")]
+
+
+def test_installed_weights_are_reported_as_local() -> None:
+    facts = ollama_facts({}, {"size": 4336358185})
+    assert ("hosting", "local") in [(fact.key, fact.value) for fact in facts]
+
+
+def test_hosting_is_not_reported_without_evidence() -> None:
+    assert "hosting" not in {fact.key for fact in ollama_facts({"details": {}})}
 
 
 def test_unknown_quantization_level_is_passed_through_unexplained() -> None:

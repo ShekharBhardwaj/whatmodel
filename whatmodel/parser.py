@@ -26,6 +26,8 @@ from whatmodel.dictionary import (
 )
 
 #: The tag Ollama uses when a name has none.
+#: Why the default tag is implied. It only holds if the name is used with Ollama.
+DEFAULT_TAG_REASON = "the name has no tag, so Ollama uses its default"
 DEFAULT_TAG = "latest"
 
 #: Hosts that mean "this is a Hugging Face repo". Used for routing, not meaning.
@@ -411,7 +413,7 @@ def _implied(
     # 2. The tag Ollama fills in when the name has none.
     if structure.tag_is_default and structure.kinds == (KIND_OLLAMA,):
         implied.extend(
-            Implied(reading, "the name has no tag, so Ollama uses its default")
+            Implied(reading, DEFAULT_TAG_REASON)
             for reading in dictionary.match(normalize(DEFAULT_TAG), ignore_context=True)
         )
 

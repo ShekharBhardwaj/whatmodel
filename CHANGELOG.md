@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A name that says nothing about hosting no longer gets a "Runs locally" row. Where a model runs is shown only when the name states it or a lookup confirms it; a model installed in local Ollama is reported as local by that lookup.
+- The `latest` tag Ollama would fill in is no longer shown as a Build row read from the name. It is a note below the table, since a bare name may not be an Ollama name at all.
+- README links work on PyPI.
+
+### Changed
+
+- `whatmodel tokens` prints grid tables.
+
 ### Added
 
 - `whatmodel <name>...` explains Ollama names, Hugging Face repos and GGUF file names in plain English.

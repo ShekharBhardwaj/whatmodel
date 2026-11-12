@@ -43,6 +43,7 @@ LOOKED_UP = ModelInfo(
         Fact("context_length", 131072, "128k tokens", "ollama"),
         Fact("tools", True, "yes", "ollama"),
         Fact("license", "Apache License, Version 2.0", "Apache License, Version 2.0", "ollama"),
+        Fact("hosting", "local", "locally, installed in Ollama here", "ollama"),
     ),
     {"ollama": "ok", "huggingface": "not_applicable"},
 )
@@ -67,7 +68,7 @@ def test_layout() -> None:
             "├─────────────┼────────────────────────────────────┼──────────────┤",
             "│ Compression │ quantization-aware trained         │ name         │",
             "├─────────────┼────────────────────────────────────┼──────────────┤",
-            "│ Runs        │ locally                            │ name         │",
+            "│ Runs        │ locally, installed in Ollama here  │ local Ollama │",
             "├─────────────┼────────────────────────────────────┼──────────────┤",
             "│ Compression │ 4-bit (Q4_0)                       │ local Ollama │",
             "├─────────────┼────────────────────────────────────┼──────────────┤",
@@ -86,9 +87,20 @@ def test_every_row_says_where_its_fact_came_from() -> None:
     assert rows[0] == ["Field", "Value", "Source"]
     sources = [row[2] for row in rows[1:]]
     # Name rows come first, looked-up rows after, and the two never interleave.
-    assert sources == ["name"] * 5 + ["local Ollama"] * 4
+    assert sources == ["name"] * 4 + ["local Ollama"] * 5
     assert ["Family", "Gemma 4 (Google)", "name"] in rows
     assert ["Context", "128k tokens", "local Ollama"] in rows
+    # Where it runs is only ever a looked-up fact here, never read off the name.
+    assert ["Runs", "locally, installed in Ollama here", "local Ollama"] in rows
+
+
+def test_assumed_default_tag_is_a_note_not_a_row() -> None:
+    # Whether a bare name is an Ollama name at all is not something it can prove.
+    info = ModelInfo(parse("qwen-max-0725"))
+    assert "Build" not in rows_of("qwen-max-0725")
+    assert "Runs" not in rows_of("qwen-max-0725")
+    assert "Pulled with Ollama, it would mean latest." in text_of(info)
+    assert "Pulled with Ollama" not in text_of(ModelInfo(parse("llama3:latest")))
 
 
 def test_offline_output_has_only_name_rows() -> None:
@@ -134,7 +146,7 @@ def test_lookup_facts_that_repeat_the_name_are_left_out() -> None:
         ("hf.co/bartowski/Qwen_Qwen3-30B-A3B-GGUF:Q4_K_M", "Family", "Qwen 3 (Alibaba)"),
         ("Qwen3-30B-A3B", "Size", "30B parameters | 3B active per token"),
         ("Qwen3-30B-A3B", "Architecture", "mixture of experts"),
-        ("llama3", "Build", "latest (the default build)"),
+        ("llama3:latest", "Build", "latest (the default build)"),
         ("mystery:v2", "Version", "v2"),
         ("some-weird-xyz:abc", "Unknown", "some-weird-xyz, abc"),
     ],
@@ -167,7 +179,7 @@ def test_name_with_two_families() -> None:
     rows = rows_of(name)
     assert rows["Family"] == "Qwen 3.5 (Alibaba) | Claude 4.6 (Anthropic)"
     assert rows["Version"] == "v2"  # the trailing version belongs to neither family
-    assert rows["Runs"] == "locally"  # a hosted family named as a source implies nothing
+    assert "Runs" not in rows  # a hosted family named as a source implies nothing
     cells = cells_of(ModelInfo(parse(name)))
     assert ["Family", "Qwen 3.5 (Alibaba)", "name"] in cells
     assert ["", "Claude 4.6 (Anthropic)", ""] in cells  # each family on its own line
