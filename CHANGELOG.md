@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `whatmodel compare <a> <b>...` puts names side by side and marks the fields that differ.
 - Names with two families say which is the model and which is a source, when the name settles it (`parsed.family_roles`). Otherwise a note says the name leaves it open.
 - About 50 new tokens found by measuring real names: families such as Orca Mini, SQLCoder, OLMo, InternVL, Florence and FLUX; compression formats such as FP8, NVFP4, MXFP8, bitsandbytes and `w4a16`; tunings such as `text`, `python`, `ocr`, `tts` and `asr`.
+- `whatmodel -` reads names from standard input, so `ollama list | whatmodel -` works.
+- `--brief` prints one row per model.
+- Hosted API model IDs (`gpt-4o-2024-08-06`) and OpenRouter IDs (`anthropic/claude-3.5-sonnet:free`) are recognized, and are no longer read as Ollama names.
+- Hugging Face answers are cached on disk for a day. `--no-cache` turns it off.
+- Unknown tokens come with a link that opens a prefilled GitHub issue.
+- `docs/index.html` runs the name reader in the browser.
 - `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
 
 ### Fixed

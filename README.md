@@ -122,6 +122,7 @@ A file name has nothing to look up, so every row comes from the name.
 ```text
 whatmodel <name>              explain one name
 whatmodel <name> <name>...    explain several
+whatmodel -                   read names from standard input, one per line
 whatmodel compare <a> <b>     put names side by side and mark what differs
 whatmodel list                explain every model installed in local Ollama
 whatmodel tokens              print the token dictionary
@@ -133,6 +134,8 @@ whatmodel tokens              print the token dictionary
 | `--offline` | Read the name only and make no network requests. |
 | `--ollama-url URL` | Where Ollama listens. Defaults to `http://localhost:11434`, or `OLLAMA_HOST` if set. |
 | `--verbose`, `-v` | Add a column with a one-sentence explanation of each row. |
+| `--brief`, `-b` | Print one row per model instead of a table each. |
+| `--no-cache` | Do not reuse or save Hugging Face answers on disk. |
 | `--version` | Print the version. |
 
 Accepted name formats:
@@ -140,6 +143,14 @@ Accepted name formats:
 - Ollama: `[host/][namespace/]model[:tag]`, for example `qwen3.5:4b` or `hf.co/bartowski/Qwen_Qwen3-30B-A3B-GGUF:Q4_K_M`
 - Hugging Face: `org/repo`, or a pasted `https://huggingface.co/org/repo` link
 - File names: `Llama-3-8B-Instruct.Q4_K_M.gguf`, with or without a folder in front
+- Hosted API model IDs: `gpt-4o-2024-08-06` or `claude-3-5-sonnet-20241022`. A name is read this way only when every family in it is offered solely as a hosted service.
+- OpenRouter IDs: `anthropic/claude-3.5-sonnet:free`, recognized by an OpenRouter-only tag such as `free` or `nitro`
+
+Piping works with `ollama list`, because only the first column of each line is read:
+
+```bash
+ollama list | whatmodel - --brief
+```
 
 A model that happens to be called `list`, `compare` or `tokens` can be explained with `whatmodel explain list`.
 
@@ -169,7 +180,7 @@ Without `--offline` the looked-up facts are compared too, below a divider. `--js
 
 ### Unknown and ambiguous tokens
 
-whatmodel never guesses. A token that is not in its dictionary is reported as unknown. A token with two possible meanings is shown with both:
+whatmodel never guesses. A token that is not in its dictionary is reported as unknown, with a link that opens a prefilled GitHub issue so you can report what it means. A token with two possible meanings is shown with both:
 
 ```console
 $ whatmodel qwen-max-0725 --offline
@@ -228,6 +239,8 @@ The lookup step tries two sources in order and merges them:
 
 Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
 
+Hugging Face answers are saved on disk for a day, so repeated lookups are instant and still work without a network connection. A note under the table says when a saved copy was used. `--no-cache` turns this off, and `WHATMODEL_CACHE_DIR` moves the folder. Ollama answers are never cached. As a library, `explain()` caches only when you pass `cache_dir`.
+
 A Source of `name (implied)` marks a row that no token states outright but another token settles. `A3B` (3B active parameters) implies a mixture-of-experts design, for example. Run with `-v` to see the reason.
 
 ## Library
@@ -246,6 +259,10 @@ info.to_dict()  # the same data --json prints
 ```
 
 `explain(name, offline=True)` makes no requests at all.
+
+## In the browser
+
+[docs/index.html](https://github.com/ShekharBhardwaj/whatmodel/blob/main/docs/index.html) is a single page that runs the same name reader in the browser, with no server and nothing sent anywhere. Served with GitHub Pages it lives at <https://shekharbhardwaj.github.io/whatmodel/>. It reads names only and makes no lookups.
 
 ## Coverage
 

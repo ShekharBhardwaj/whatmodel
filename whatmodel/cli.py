@@ -1,6 +1,7 @@
 """Command line interface.
 
 whatmodel <name> [<name>...]   explain one or more names
+whatmodel compare <a> <b>      put names side by side and mark what differs
 whatmodel list                 explain every model installed in local Ollama
 whatmodel tokens               print the token dictionary
 """
@@ -8,6 +9,8 @@ whatmodel tokens               print the token dictionary
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -15,6 +18,7 @@ from rich.console import Console
 from typer.core import TyperGroup
 
 from whatmodel import __version__
+from whatmodel.cache import default_cache_dir
 from whatmodel.dictionary import get_dictionary
 from whatmodel.lookup import (
     DEFAULT_OLLAMA_URL,
@@ -23,7 +27,13 @@ from whatmodel.lookup import (
     explain,
     list_installed,
 )
-from whatmodel.render import compare_rows, print_info, render_compare, render_tokens
+from whatmodel.render import (
+    compare_rows,
+    print_info,
+    render_brief,
+    render_compare,
+    render_tokens,
+)
 
 _GROUP_OPTIONS = frozenset({"--help", "-h", "--version"})
 
@@ -55,6 +65,13 @@ OfflineOption = Annotated[
 ]
 OllamaUrlOption = Annotated[
     str, typer.Option("--ollama-url", help="Base URL of the Ollama API.", envvar="OLLAMA_HOST")
+]
+BriefOption = Annotated[
+    bool, typer.Option("--brief", "-b", help="Print one row per model instead of a table each.")
+]
+NoCacheOption = Annotated[
+    bool,
+    typer.Option("--no-cache", help="Do not reuse or save Hugging Face answers on disk."),
 ]
 VerboseOption = Annotated[
     bool, typer.Option("--verbose", "-v", help="Show a one-sentence explanation under each row.")
@@ -88,25 +105,76 @@ def _main(
     """Explain LLM model names in plain English."""
 
 
+#: The header row of ``ollama list``, skipped when names are piped in.
+_STDIN_HEADERS = frozenset({"NAME", "MODEL"})
+
+
+def _names_from_stdin() -> list[str]:
+    """Read one name per line, taking the first column so ``ollama list`` can be piped in."""
+    names: list[str] = []
+    for line in sys.stdin.read().splitlines():
+        columns = line.split()
+        if not columns or columns[0].startswith("#") or columns[0] in _STDIN_HEADERS:
+            continue
+        names.append(columns[0])
+    return names
+
+
+def _expand(names: list[str]) -> list[str]:
+    """Replace a lone ``-`` with the names piped in on standard input."""
+    if "-" not in names:
+        return names
+    piped = _names_from_stdin()
+    expanded: list[str] = []
+    for name in names:
+        expanded.extend(piped if name == "-" else [name])
+        if name == "-":
+            piped = []  # standard input can only be read once
+    return expanded
+
+
+def _cache_dir(offline: bool, no_cache: bool) -> Path | None:
+    return None if offline or no_cache else default_cache_dir()
+
+
 def _explain_all(
-    names: list[str], *, offline: bool, ollama_url: str
+    names: list[str], *, offline: bool, ollama_url: str, no_cache: bool = False
 ) -> tuple[list[ModelInfo], list[str]]:
     infos: list[ModelInfo] = []
     errors: list[str] = []
+    cache_dir = _cache_dir(offline, no_cache)
     for name in names:
         try:
-            infos.append(explain(name, offline=offline, ollama_url=_ollama_url(ollama_url)))
+            infos.append(
+                explain(
+                    name,
+                    offline=offline,
+                    ollama_url=_ollama_url(ollama_url),
+                    cache_dir=cache_dir,
+                )
+            )
         except ValueError as exc:
             errors.append(f"{name!r}: {exc}")
     return infos, errors
 
 
 def _report(
-    infos: list[ModelInfo], errors: list[str], *, as_json: bool, as_list: bool, verbose: bool
+    infos: list[ModelInfo],
+    errors: list[str],
+    *,
+    as_json: bool,
+    as_list: bool,
+    verbose: bool,
+    brief: bool = False,
 ) -> None:
     if as_json:
         data = [info.to_dict() for info in infos]
         _print_json(data if as_list or len(data) != 1 else data[0])
+    elif brief:
+        if infos:
+            console = Console()
+            console.print(render_brief(infos))
+            console.print()
     else:
         console = Console()
         for info in infos:
@@ -126,10 +194,28 @@ def explain_command(
     offline: OfflineOption = False,
     ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
     verbose: VerboseOption = False,
+    brief: BriefOption = False,
+    no_cache: NoCacheOption = False,
 ) -> None:
-    """Explain one or more model names. This is what `whatmodel <name>` runs."""
-    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url)
-    _report(infos, errors, as_json=as_json, as_list=len(names) > 1, verbose=verbose)
+    """Explain one or more model names. This is what `whatmodel <name>` runs.
+
+    Use - as a name to read names from standard input, one per line:
+    `ollama list | whatmodel -`.
+    """
+    piped = "-" in names
+    names = _expand(names)
+    if not names:
+        typer.echo("whatmodel: no model names were given.", err=True)
+        raise typer.Exit(code=2)
+    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url, no_cache=no_cache)
+    _report(
+        infos,
+        errors,
+        as_json=as_json,
+        as_list=piped or len(names) > 1,
+        verbose=verbose,
+        brief=brief,
+    )
 
 
 @app.command("compare")
@@ -138,12 +224,14 @@ def compare_command(
     as_json: JsonOption = False,
     offline: OfflineOption = False,
     ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
+    no_cache: NoCacheOption = False,
 ) -> None:
     """Put two or more model names side by side and mark the fields that differ."""
+    names = _expand(names)
     if len(names) < 2:
         typer.echo("whatmodel: compare needs at least two names.", err=True)
         raise typer.Exit(code=2)
-    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url)
+    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url, no_cache=no_cache)
     if as_json:
         _print_json(
             {
@@ -175,6 +263,8 @@ def list_command(
     offline: OfflineOption = False,
     ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
     verbose: VerboseOption = False,
+    brief: BriefOption = False,
+    no_cache: NoCacheOption = False,
 ) -> None:
     """Explain every model installed in local Ollama.
 
@@ -189,8 +279,8 @@ def list_command(
     if not names and not as_json:
         typer.echo("No models are installed in Ollama.")
         return
-    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url)
-    _report(infos, errors, as_json=as_json, as_list=True, verbose=verbose)
+    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url, no_cache=no_cache)
+    _report(infos, errors, as_json=as_json, as_list=True, verbose=verbose, brief=brief)
 
 
 @app.command("tokens")

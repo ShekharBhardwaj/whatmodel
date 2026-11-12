@@ -105,3 +105,9 @@ Create the labels the release notes use if they do not exist: `tokens`, `feature
 - **The approval times out.** Re-run the failed jobs from the run page. Nothing was published, so nothing needs cleaning up.
 - **`github-release` fails after PyPI succeeded.** The version is on PyPI but has no tag yet. Re-run that job from the run page rather than starting a new run, so the tag lands on the commit that was published.
 - **A bad version reached PyPI.** A version number can never be reused. Yank the release on PyPI and ship a new patch version.
+
+## The browser page
+
+`docs/index.html` loads the released package from PyPI, so it picks up each new release by itself. To publish the page, turn on GitHub Pages once: repository Settings, Pages, Source "Deploy from a branch", branch `main`, folder `/docs`. It is then served at <https://shekharbhardwaj.github.io/whatmodel/>.
+
+To try the page against a local build, serve a folder that holds `index.html` and a wheel from `uv build`, and open `index.html?wheel=<URL of the wheel>`.

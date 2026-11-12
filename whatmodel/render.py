@@ -6,6 +6,7 @@ Facts from the name and facts from lookups are kept in two separate blocks.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from urllib.parse import urlencode
 
 from rich import box
 from rich.console import Console, Group, RenderableType
@@ -28,12 +29,17 @@ from whatmodel.lookup import (
 )
 from whatmodel.parser import (
     DEFAULT_TAG_REASON,
+    KIND_API,
     KIND_FILE,
     KIND_HUGGINGFACE,
     KIND_OLLAMA,
+    KIND_OPENROUTER,
     ROLE_MODEL,
     ParsedName,
 )
+
+#: Where unknown tokens are reported.
+ISSUES_URL = "https://github.com/ShekharBhardwaj/whatmodel/issues/new"
 
 #: Row order and headings for looked-up facts.
 FACT_HEADINGS = {
@@ -53,6 +59,8 @@ _KIND_PHRASES = {
     KIND_OLLAMA: "an Ollama model",
     KIND_HUGGINGFACE: "a Hugging Face repo",
     KIND_FILE: "a model file",
+    KIND_API: "a hosted API model ID",
+    KIND_OPENROUTER: "an OpenRouter model ID",
 }
 
 #: Source of a row that no token states outright but another token settles.
@@ -63,6 +71,9 @@ _SOURCE_NAMES = {
     SOURCE_HUGGINGFACE: "Hugging Face",
     SOURCE_IMPLIED: "name (implied)",
 }
+
+#: Public name for the Source column wording, for other front ends.
+SOURCE_LABELS = _SOURCE_NAMES
 
 _ROLE_SUFFIXES = {ROLE_MODEL: "the model"}
 _ROLE_SUFFIX_OTHER = "a source"
@@ -235,6 +246,8 @@ def lookup_note(info: ModelInfo) -> str | None:
 def _kinds_line(info: ModelInfo) -> str | None:
     """Name the possible formats, unless a lookup has settled which one it is."""
     parsed = info.parsed
+    if parsed.kinds in ((KIND_API,), (KIND_OPENROUTER,)):
+        return _KIND_PHRASES[parsed.kinds[0]]
     if len(parsed.kinds) < 2:
         return None
     found = [source for source, status in info.lookups.items() if status == STATUS_OK]
@@ -282,6 +295,28 @@ def _add_rows(table: Table, rows: list[Row], verbose: bool) -> None:
         table.add_row(*cells)
 
 
+def info_notes(info: ModelInfo) -> list[str]:
+    """The plain sentences shown under a model's table."""
+    parsed = info.parsed
+    looked_up = lookup_rows(info)
+    captions: list[str] = []
+    roles = _roles_line(parsed)
+    if roles:
+        captions.append(roles)
+    kinds = _kinds_line(info)
+    if kinds:
+        captions.append(f"Read as {kinds}.")
+    if parsed.tag_is_default and parsed.kinds == (KIND_OLLAMA,):
+        captions.append(f"No tag in the name. Pulled with Ollama, it would mean {parsed.tag}.")
+    if info.cached:
+        names = " and ".join(_SOURCE_NAMES.get(source, source) for source in info.cached)
+        captions.append(f"{names} facts are from a saved copy, up to a day old.")
+    note = lookup_note(info)
+    if note and not looked_up and STATUS_OK not in info.lookups.values():
+        captions.append(f"Nothing looked up: {note}.")
+    return captions
+
+
 def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
     """Build one model's table: a row per fact, with a column saying where it came from.
 
@@ -310,20 +345,59 @@ def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
         table.add_section()
         _add_rows(table, looked_up, verbose)
 
-    captions: list[str] = []
-    roles = _roles_line(parsed)
-    if roles:
-        captions.append(roles)
-    kinds = _kinds_line(info)
-    if kinds:
-        captions.append(f"Read as {kinds}.")
-    if parsed.tag_is_default and parsed.kinds == (KIND_OLLAMA,):
-        captions.append(f"No tag in the name. Pulled with Ollama, it would mean {parsed.tag}.")
-    note = lookup_note(info)
-    if note and not looked_up and STATUS_OK not in info.lookups.values():
-        captions.append(f"Nothing looked up: {note}.")
-    notes = [Text(caption, style="dim") for caption in captions]
+    notes = [Text(caption, style="dim") for caption in info_notes(info)]
     return Padding(Group(table, *notes), (1, 0, 0, 0))
+
+
+def report_url(parsed: ParsedName) -> str:
+    """A link that opens a prefilled GitHub issue for the name's unknown tokens."""
+    tokens = ", ".join(parsed.unknown)
+    query = urlencode(
+        {
+            "labels": "tokens",
+            "title": f"Unknown token: {tokens}",
+            "body": f"Seen in: `{parsed.raw}`\n\nWhat it means (with a source if you have one):\n",
+        }
+    )
+    return f"{ISSUES_URL}?{query}"
+
+
+#: The looked-up facts worth a place in the one-line view, and how each is worded.
+_BRIEF_FACTS = {
+    "Runs": "runs {}",
+    "Parameters": "{} parameters",
+    "Compression": "{}",
+    "Context": "{} context",
+    "File size": "{}",
+}
+
+
+def summary(info: ModelInfo) -> tuple[str, str]:
+    """One line for what the name says and one for what was looked up."""
+    said: list[str] = []
+    for found in name_rows(info.parsed):
+        text = ", ".join(label for label, _ in found.entries)
+        if found.heading in ("Ambiguous", "Unknown"):
+            text = f"{found.heading.lower()}: {text}"
+        said.append(text)
+    looked_up = [
+        _BRIEF_FACTS[found.heading].format(found.entries[0][0])
+        for found in lookup_rows(info)
+        if found.heading in _BRIEF_FACTS
+    ]
+    return "; ".join(said), "; ".join(looked_up)
+
+
+def render_brief(infos: list[ModelInfo]) -> RenderableType:
+    """Build one table with a row per model, for scanning a long list."""
+    table = Table(box=box.SQUARE, show_lines=True, header_style="bold", border_style="dim")
+    table.add_column("Name", style="cyan", overflow="fold")
+    table.add_column("From the name", overflow="fold")
+    table.add_column("Looked up", overflow="fold")
+    for info in infos:
+        said, looked_up = summary(info)
+        table.add_row(info.parsed.raw, said or "-", Text(looked_up or "-", style="dim"))
+    return Padding(table, (1, 0, 0, 0))
 
 
 def _cell(found: Row | None) -> str | None:
@@ -426,17 +500,26 @@ def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
 
 def print_info(console: Console, info: ModelInfo, *, verbose: bool = False) -> None:
     console.print(render_info(info, verbose=verbose))
+    if info.parsed.unknown:
+        console.print("Know what an unknown token means? Report it:", style="dim")
+        # Not wrapped by rich, so the terminal still sees one link it can open.
+        console.print(report_url(info.parsed), style="dim", soft_wrap=True, highlight=False)
 
 
 __all__ = [
     "FACT_HEADINGS",
+    "SOURCE_LABELS",
     "Row",
     "compare_rows",
+    "info_notes",
     "lookup_note",
     "lookup_rows",
     "name_rows",
     "print_info",
+    "render_brief",
     "render_compare",
     "render_info",
     "render_tokens",
+    "report_url",
+    "summary",
 ]

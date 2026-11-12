@@ -240,7 +240,8 @@ def test_v_prefixed_version_is_recognized_anywhere() -> None:
 def test_dashed_version() -> None:
     parsed = parse("claude-3-5-sonnet-20241022")
     assert (parsed.family, parsed.version, parsed.tier) == ("claude", "3.5", "sonnet")
-    assert parsed.values("build") == ("2024-10-22", "latest")
+    assert parsed.values("build") == ("2024-10-22",)
+    assert parsed.kinds == ("api",)  # a hosted-only family cannot be an Ollama pull
 
 
 @pytest.mark.parametrize(
@@ -467,3 +468,40 @@ def test_implied_facts_are_labelled_as_implied_in_json() -> None:
     item = parse("Qwen3-30B-A3B").to_dict()["implied"][0]
     assert item["source"] == "implied"
     assert item["reason"] == "implied by 'A3B' in the name"
+
+
+# ------------------------------------------------------- api and openrouter ----
+
+
+@pytest.mark.parametrize(
+    ("name", "kinds"),
+    [
+        ("gpt-4o-2024-08-06", ("api",)),
+        ("claude-3-5-sonnet-20241022", ("api",)),
+        ("anthropic/claude-3.5-sonnet", ("api",)),
+        ("anthropic/claude-3.5-sonnet:free", ("openrouter",)),
+        ("meta-llama/llama-3.3-70b-instruct:free", ("openrouter",)),
+        # Not enough evidence, so these stay as they were.
+        ("claude-3-5-sonnet:latest", ("ollama",)),
+        ("llama3:free", ("ollama",)),
+        ("gpt-oss:20b", ("ollama",)),
+        ("qwen-max-0725", ("ollama",)),
+        ("Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2", ("huggingface", "ollama")),
+    ],
+)
+def test_name_kinds(name: str, kinds: tuple[str, ...]) -> None:
+    assert parse(name).kinds == kinds
+
+
+def test_api_name_gets_no_ollama_tag() -> None:
+    parsed = parse("gpt-4o-2024-08-06")
+    assert (parsed.tag, parsed.tag_is_default) == (None, False)
+    assert parsed.build == "2024-08-06"
+    assert parsed.unknown == ()
+
+
+def test_openrouter_variant_is_read() -> None:
+    parsed = parse("anthropic/claude-3.5-sonnet:nitro")
+    assert parsed.org == "anthropic"
+    assert parsed.hosting == "cloud"
+    assert parsed.unknown == ()

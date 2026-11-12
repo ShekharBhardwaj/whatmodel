@@ -11,9 +11,18 @@ from typer.testing import CliRunner
 
 import whatmodel
 from whatmodel import Fact, ModelInfo, parse
+from whatmodel.cache import default_cache_dir
 from whatmodel.cli import app
 from whatmodel.lookup import OllamaUnavailableError
-from whatmodel.render import compare_rows, lookup_note, lookup_rows, name_rows, render_info
+from whatmodel.render import (
+    compare_rows,
+    lookup_note,
+    lookup_rows,
+    name_rows,
+    render_info,
+    report_url,
+    summary,
+)
 
 runner = CliRunner()
 
@@ -257,9 +266,10 @@ def test_lookup_results_reach_the_output(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.exit_code == 0
     assert "local Ollama" in result.output
     assert "128k tokens" in result.output
-    assert calls == [
-        {"name": "gemma4:e2b-it-qat", "offline": False, "ollama_url": "http://box:9999"}
-    ]
+    (call,) = calls
+    cache_dir = call.pop("cache_dir")
+    assert call == {"name": "gemma4:e2b-it-qat", "offline": False, "ollama_url": "http://box:9999"}
+    assert cache_dir == default_cache_dir()  # the command line caches unless told not to
 
     result = runner.invoke(app, ["gemma4:e2b-it-qat", "--json"])
     facts = json.loads(result.output)["facts"]
@@ -421,3 +431,89 @@ def test_compare_needs_two_names() -> None:
     result = runner.invoke(app, ["compare", "gemma4:12b", "--offline"])
     assert result.exit_code == 2
     assert "at least two names" in result.output
+
+
+# -------------------------------------------- stdin, brief, cache, report ----
+
+PIPED = """NAME            ID      SIZE    MODIFIED
+gemma4:12b      abc123  8.1 GB  2 days ago
+
+llama3:latest   def456  4.7 GB  3 weeks ago
+# a comment
+"""
+
+
+def test_names_can_be_piped_in() -> None:
+    result = runner.invoke(app, ["-", "--offline", "--json"], input=PIPED)
+    assert result.exit_code == 0
+    assert [item["input"] for item in json.loads(result.output)] == ["gemma4:12b", "llama3:latest"]
+
+
+def test_one_piped_name_is_still_a_list() -> None:
+    result = runner.invoke(app, ["-", "--offline", "--json"], input="gemma4:12b\n")
+    assert [item["input"] for item in json.loads(result.output)] == ["gemma4:12b"]
+
+
+def test_empty_stdin_is_an_error() -> None:
+    result = runner.invoke(app, ["-", "--offline"], input="")
+    assert result.exit_code == 2
+    assert "no model names" in result.output
+
+
+def test_summary() -> None:
+    said, looked_up = summary(LOOKED_UP)
+    assert said == (
+        "Gemma 4 (Google); effective 2B parameters; instruction tuned (ready for chat); "
+        "quantization-aware trained"
+    )
+    assert looked_up == "runs locally, installed in Ollama here; 4-bit (Q4_0); 128k tokens context"
+    assert summary(ModelInfo(parse("mystery:zzz")))[0] == "unknown: mystery, zzz"
+
+
+def test_brief_prints_one_row_per_model() -> None:
+    result = runner.invoke(
+        app, ["gemma4:12b", "llama3:8b", "--offline", "--brief"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 0
+    rows = [line for line in result.output.splitlines() if line.startswith("\u2502")]
+    assert len(rows) == 3  # the header and one row each
+    assert "Gemma 4 (Google); 12B parameters" in rows[1]
+    assert "Llama 3 (Meta); 8B parameters" in rows[2]
+
+
+def test_no_cache_flag_turns_the_cache_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+
+    def fake_explain(name: str, **options: object) -> ModelInfo:
+        seen.append(options["cache_dir"])
+        return LOOKED_UP
+
+    monkeypatch.setattr("whatmodel.cli.explain", fake_explain)
+    runner.invoke(app, ["gemma4:e2b-it-qat", "--no-cache"])
+    runner.invoke(app, ["gemma4:e2b-it-qat", "--offline"])
+    assert seen == [None, None]
+
+
+def test_unknown_tokens_come_with_a_report_link() -> None:
+    parsed = parse("some-weird-xyz:abc")
+    url = report_url(parsed)
+    assert url.startswith("https://github.com/ShekharBhardwaj/whatmodel/issues/new?labels=tokens")
+    assert "Unknown+token%3A+some-weird-xyz%2C+abc" in url
+    result = runner.invoke(app, ["some-weird-xyz:abc", "--offline"])
+    assert "Know what an unknown token means? Report it:" in result.output
+    assert url in result.output.replace("\n", "")  # the link is printed whole
+    assert "Report it" not in runner.invoke(app, ["qwen3.5:4b", "--offline"]).output
+
+
+def test_cached_facts_are_labelled() -> None:
+    info = ModelInfo(LOOKED_UP.parsed, LOOKED_UP.facts, LOOKED_UP.lookups, ("huggingface",))
+    assert "Hugging Face facts are from a saved copy, up to a day old." in text_of(info)
+    assert info.to_dict()["cached"] == ["huggingface"]
+    assert "saved copy" not in text_of(LOOKED_UP)
+
+
+def test_api_and_openrouter_names_say_what_they_are() -> None:
+    assert "Read as a hosted API model ID." in text_of(ModelInfo(parse("gpt-4o-2024-08-06")))
+    text = text_of(ModelInfo(parse("anthropic/claude-3.5-sonnet:free")))
+    assert "Read as an OpenRouter model ID." in text
+    assert "Pulled with Ollama" not in text

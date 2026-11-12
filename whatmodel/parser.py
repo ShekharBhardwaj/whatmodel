@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from typing import Any
 
@@ -42,6 +42,12 @@ MAX_NAME_LENGTH = 512
 KIND_OLLAMA = "ollama"
 KIND_HUGGINGFACE = "huggingface"
 KIND_FILE = "file"
+#: A model ID used with a hosted API, such as "gpt-4o-2024-08-06".
+KIND_API = "api"
+#: An OpenRouter model ID, such as "anthropic/claude-3.5-sonnet:free".
+KIND_OPENROUTER = "openrouter"
+#: Tags that only OpenRouter uses. Their meanings live in tokens.yaml.
+OPENROUTER_VARIANTS = frozenset({"free", "nitro", "floor", "online"})
 
 _SCHEME = re.compile(r"^[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
 _URL_TAIL = re.compile(r"[?#]")
@@ -497,6 +503,33 @@ def _implied(
     return implied
 
 
+def _refine_kind(structure: _Structure, dictionary: Dictionary) -> _Structure:
+    """Recognize hosted-API and OpenRouter names, which are not Ollama names.
+
+    Only evidence in the name counts: an OpenRouter-only tag, or a name whose
+    every family is offered only as a hosted service and so cannot be pulled.
+    """
+    if structure.filename is not None or structure.host is not None:
+        return structure
+    if (
+        structure.namespace is not None
+        and structure.tag is not None
+        and not structure.tag_is_default
+        and structure.tag.lower() in OPENROUTER_VARIANTS
+    ):
+        return replace(structure, kinds=(KIND_OPENROUTER,))
+    if structure.tag is not None and not structure.tag_is_default:
+        return structure
+    families = [
+        token.reading
+        for token in _tokenize(structure.token_text, "model", dictionary)
+        if token.reading is not None and token.reading.category == "family"
+    ]
+    if families and all(("hosting", "cloud") in reading.implies for reading in families):
+        return replace(structure, kinds=(KIND_API,), tag=None, tag_is_default=False)
+    return structure
+
+
 def parse(name: str) -> ParsedName:
     """Explain a model name using only the name itself (no network).
 
@@ -512,6 +545,8 @@ def parse(name: str) -> ParsedName:
 
     dictionary = get_dictionary()
     structure = _split_structure(raw, dictionary)
+
+    structure = _refine_kind(structure, dictionary)
 
     tokens: list[Token] = []
     if structure.host is not None:

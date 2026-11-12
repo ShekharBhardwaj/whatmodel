@@ -26,3 +26,11 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(socket.socket, "connect_ex", blocked)
     monkeypatch.setattr(socket, "getaddrinfo", blocked)
+
+
+@pytest.fixture(autouse=True)
+def _private_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Point the lookup cache at an empty folder, never at the developer's real one."""
+    monkeypatch.setenv("WHATMODEL_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))

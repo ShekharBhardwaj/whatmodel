@@ -185,6 +185,16 @@ tokens:
     label: Moonshot AI
     explanation: Moonshot AI's own account, so the upload comes from the team that trained the model.
 
+  - pattern: anthropic
+    category: org
+    label: Anthropic
+    explanation: Anthropic's own models, offered as a hosted service.
+
+  - pattern: x-ai
+    category: org
+    label: xAI
+    explanation: xAI's own models, the Grok line.
+
   - pattern: openai
     category: org
     label: OpenAI
@@ -1367,6 +1377,14 @@ tokens:
     explanation: A date stamp, so this snapshot is from {y}-{m}-{d}.
     examples: ['20250514']
 
+  - pattern: '(?P<y>20[2-3]\d)_(?P<m>0[1-9]|1[0-2])_(?P<d>0[1-9]|[12]\d|3[01])'
+    regex: true
+    category: build
+    value: '{y}-{m}-{d}'
+    label: 'dated {y}-{m}-{d}'
+    explanation: A date stamp, so this snapshot is from {y}-{m}-{d}.
+    examples: ['2024-08-06']
+
   - pattern: alpha
     category: build
     label: alpha (early test release)
@@ -1377,3 +1395,29 @@ tokens:
     category: hosting
     label: in the cloud (remote, not on your machine)
     explanation: Runs on the provider's servers, so nothing is downloaded and your prompts leave your machine.
+
+  # OpenRouter variants: a suffix after ":" that picks how a hosted model is
+  # served. The code reads a name with one of these tags as an OpenRouter name.
+  - pattern: free
+    category: hosting
+    value: cloud
+    label: in the cloud, on OpenRouter's free tier
+    explanation: A no-cost way to call the hosted model through OpenRouter, with lower rate limits than the paid version.
+
+  - pattern: nitro
+    category: hosting
+    value: cloud
+    label: in the cloud, on OpenRouter's fastest provider
+    explanation: An OpenRouter variant that sends requests to whichever provider answers fastest.
+
+  - pattern: floor
+    category: hosting
+    value: cloud
+    label: in the cloud, on OpenRouter's cheapest provider
+    explanation: An OpenRouter variant that sends requests to whichever provider charges least.
+
+  - pattern: online
+    category: hosting
+    value: cloud
+    label: in the cloud, on OpenRouter with web search
+    explanation: An OpenRouter variant that adds web search results to each request.

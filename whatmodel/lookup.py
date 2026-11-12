@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from whatmodel import cache
 from whatmodel.dictionary import get_dictionary
 from whatmodel.parser import (
     HUGGINGFACE_HOSTS,
@@ -30,6 +31,8 @@ from whatmodel.parser import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import httpx
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -83,6 +86,8 @@ class ModelInfo:
     facts: tuple[Fact, ...] = ()
     #: Source name -> status, for every source, including the ones skipped.
     lookups: Mapping[str, str] = field(default_factory=dict)
+    #: Sources whose facts came from the on-disk cache rather than a fresh request.
+    cached: tuple[str, ...] = ()
 
     def fact(self, key: str) -> Fact | None:
         for fact in self.facts:
@@ -95,6 +100,7 @@ class ModelInfo:
             **self.parsed.to_dict(),
             "facts": [fact.to_dict() for fact in self.facts],
             "lookups": dict(self.lookups),
+            "cached": list(self.cached),
         }
 
 
@@ -450,11 +456,16 @@ def huggingface_facts(
 
 
 def _lookup_huggingface(
-    parsed: ParsedName, client: httpx.Client, timeout: float
-) -> tuple[str, list[Fact]]:
+    parsed: ParsedName, client: httpx.Client, timeout: float, cache_dir: Path | None = None
+) -> tuple[str, list[Fact], bool]:
+    """Return the status, the facts, and whether they came from the cache."""
     repo = _huggingface_repo(parsed)
     if repo is None:
-        return STATUS_NOT_APPLICABLE, []
+        return STATUS_NOT_APPLICABLE, [], False
+    if cache_dir is not None:
+        stored = cache.read(cache_dir, repo)
+        if stored is not None:
+            return STATUS_OK, huggingface_facts(stored, parsed.quantization), True
     status, body = _request(
         client,
         "GET",
@@ -463,8 +474,10 @@ def _lookup_huggingface(
         timeout=timeout,
     )
     if status != STATUS_OK:
-        return status, []
-    return STATUS_OK, huggingface_facts(body, parsed.quantization)
+        return status, [], False
+    if cache_dir is not None:
+        cache.write(cache_dir, repo, body)
+    return STATUS_OK, huggingface_facts(body, parsed.quantization), False
 
 
 # ------------------------------------------------------------------- merge ----
@@ -486,12 +499,15 @@ def explain(
     ollama_url: str = DEFAULT_OLLAMA_URL,
     timeout: float | None = None,
     client: httpx.Client | None = None,
+    cache_dir: Path | None = None,
 ) -> ModelInfo:
     """Explain a model name: Layer 1 from the name, then Layer 2 from lookups.
 
     ``offline=True`` skips Layer 2 completely and makes no request. ``timeout``
     overrides the per-source defaults. ``client`` lets a caller share or mock
-    the HTTP client. Lookup failures never raise.
+    the HTTP client. ``cache_dir`` turns on a one-day on-disk cache of Hugging
+    Face answers; without it nothing is read from or written to disk. Lookup
+    failures never raise.
     """
     parsed = parse(name)
     if offline:
@@ -510,11 +526,12 @@ def explain(
         ollama_status, from_ollama = _lookup_ollama(
             parsed, active, ollama_url, OLLAMA_TIMEOUT if timeout is None else timeout
         )
-        hub_status, from_hub = _lookup_huggingface(
-            parsed, active, HUGGINGFACE_TIMEOUT if timeout is None else timeout
+        hub_status, from_hub, hub_cached = _lookup_huggingface(
+            parsed, active, HUGGINGFACE_TIMEOUT if timeout is None else timeout, cache_dir
         )
     finally:
         if owned:
             active.close()
     lookups = {SOURCE_OLLAMA: ollama_status, SOURCE_HUGGINGFACE: hub_status}
-    return ModelInfo(parsed, _merge([from_ollama, from_hub]), lookups)
+    cached = (SOURCE_HUGGINGFACE,) if hub_cached else ()
+    return ModelInfo(parsed, _merge([from_ollama, from_hub]), lookups, cached)
