@@ -26,6 +26,10 @@ from whatmodel.dictionary import (
 )
 
 #: The tag Ollama uses when a name has none.
+#: Roles a family can play when a name mentions more than one.
+ROLE_MODEL = "model"
+ROLE_SOURCE = "source"
+
 #: Why the default tag is implied. It only holds if the name is used with Ollama.
 DEFAULT_TAG_REASON = "the name has no tag, so Ollama uses its default"
 DEFAULT_TAG = "latest"
@@ -87,7 +91,7 @@ class Implied:
     reason: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self.reading.to_dict(), "reason": self.reason, "source": "name"}
+        return {**self.reading.to_dict(), "reason": self.reason, "source": "implied"}
 
 
 @dataclass(frozen=True)
@@ -193,6 +197,67 @@ class ParsedName:
         return tuple(token for token in self.tokens if len(token.readings) > 1)
 
     @property
+    def family_roles(self) -> dict[str, str]:
+        """Which family is the model and which is a source, when the name settles it.
+
+        Maps family values to ``"model"`` or ``"source"``. Empty when the name has
+        fewer than two families, or when nothing in it says which is which.
+        """
+        return self._family_roles()[0]
+
+    @property
+    def family_roles_reason(self) -> str | None:
+        """Why :attr:`family_roles` reads the way it does, or ``None`` when it is empty."""
+        return self._family_roles()[1]
+
+    def _family_roles(self) -> tuple[dict[str, str], str | None]:
+        readings = [token.reading for token in self.tokens]
+        families: dict[str, Reading] = {}
+        for reading in readings:
+            if reading is not None and reading.category == "family":
+                families.setdefault(reading.value, reading)
+        if len(families) < 2:
+            return {}, None
+
+        def assign(model: Reading, reason: str) -> tuple[dict[str, str], str]:
+            roles = {
+                value: ROLE_MODEL if value == model.value else ROLE_SOURCE for value in families
+            }
+            return roles, reason
+
+        # 1. "<family>-Distill-<family>": the family right after the word is the
+        #    one that was trained, and what came before it is what it learned from.
+        for position, reading in enumerate(readings[:-1]):
+            following = readings[position + 1]
+            if (
+                reading is not None
+                and reading.category == "tuning"
+                and reading.value == "distill"
+                and following is not None
+                and following.category == "family"
+                and any(
+                    earlier is not None
+                    and earlier.category == "family"
+                    and earlier.value != following.value
+                    for earlier in readings[:position]
+                )
+            ):
+                text = self.tokens[position].text
+                return assign(
+                    following, f"the family right after '{text}' is the one that was trained"
+                )
+
+        # 2. A family offered only as a hosted service has no weights to share,
+        #    so it cannot be the model itself.
+        hosted = [r for r in families.values() if ("hosting", "cloud") in r.implies]
+        local = [r for r in families.values() if ("hosting", "cloud") not in r.implies]
+        if hosted and len(local) == 1:
+            names = " and ".join(reading.label for reading in hosted)
+            verb = "is" if len(hosted) == 1 else "are"
+            return assign(local[0], f"{names} {verb} only offered as a hosted service")
+        return {}, None
+
+    @property
     def is_ambiguous(self) -> bool:
         """True when the name's format or any of its tokens has more than one reading."""
         return len(self.kinds) > 1 or bool(self.ambiguous)
@@ -211,6 +276,7 @@ class ParsedName:
             },
             "tokens": [token.to_dict() for token in self.tokens],
             "implied": [item.to_dict() for item in self.implied],
+            "family_roles": {"roles": self.family_roles, "reason": self.family_roles_reason},
         }
 
 

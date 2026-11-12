@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `whatmodel compare <a> <b>...` puts names side by side and marks the fields that differ.
+- Names with two families say which is the model and which is a source, when the name settles it (`parsed.family_roles`). Otherwise a note says the name leaves it open.
+- About 50 new tokens found by measuring real names: families such as Orca Mini, SQLCoder, OLMo, InternVL, Florence and FLUX; compression formats such as FP8, NVFP4, MXFP8, bitsandbytes and `w4a16`; tunings such as `text`, `python`, `ocr`, `tts` and `asr`.
+- `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
+
 ### Fixed
 
 - A name that says nothing about hosting no longer gets a "Runs locally" row. Where a model runs is shown only when the name states it or a lookup confirms it; a model installed in local Ollama is reported as local by that lookup.
@@ -14,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README links work on PyPI.
 
 ### Changed
+
+- Rows that a token implies rather than states now show a Source of `name (implied)`, and `implied` in JSON (was `name`).
 
 - `whatmodel tokens` prints grid tables.
 

@@ -425,3 +425,45 @@ def test_to_dict_keeps_every_reading_of_an_ambiguous_token() -> None:
         ("unknown", []),
         ("unknown", []),
     ]
+
+
+# ------------------------------------------------------------ family roles ----
+
+
+def test_family_after_distill_is_the_model() -> None:
+    parsed = parse("deepseek-ai/DeepSeek-R1-Distill-Qwen-7B")
+    assert parsed.family_roles == {"deepseek-r1": "source", "qwen": "model"}
+    assert parsed.family_roles_reason == (
+        "the family right after 'Distill' is the one that was trained"
+    )
+
+
+def test_hosted_only_family_is_a_source() -> None:
+    parsed = parse("Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+    assert parsed.family_roles == {"qwen": "model", "claude": "source"}
+    assert parsed.family_roles_reason == "Claude is only offered as a hosted service"
+    assert parsed.to_dict()["family_roles"] == {
+        "roles": {"qwen": "model", "claude": "source"},
+        "reason": "Claude is only offered as a hosted service",
+    }
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "qwen3.5:4b",  # one family
+        "claude-3-5-sonnet-20241022",  # one hosted family
+        "lmms-lab/llava-onevision-qwen2-7b",  # two open families, nothing says which
+        "some-weird-xyz:abc",  # no family
+    ],
+)
+def test_family_roles_are_not_guessed(name: str) -> None:
+    parsed = parse(name)
+    assert parsed.family_roles == {}
+    assert parsed.family_roles_reason is None
+
+
+def test_implied_facts_are_labelled_as_implied_in_json() -> None:
+    item = parse("Qwen3-30B-A3B").to_dict()["implied"][0]
+    assert item["source"] == "implied"
+    assert item["reason"] == "implied by 'A3B' in the name"

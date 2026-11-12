@@ -13,7 +13,7 @@ import whatmodel
 from whatmodel import Fact, ModelInfo, parse
 from whatmodel.cli import app
 from whatmodel.lookup import OllamaUnavailableError
-from whatmodel.render import lookup_note, lookup_rows, name_rows, render_info
+from whatmodel.render import compare_rows, lookup_note, lookup_rows, name_rows, render_info
 
 runner = CliRunner()
 
@@ -141,7 +141,7 @@ def test_lookup_facts_that_repeat_the_name_are_left_out() -> None:
         (
             "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
             "Family",
-            "DeepSeek R1 (DeepSeek) | Qwen (Alibaba)",
+            "DeepSeek R1 (DeepSeek), a source | Qwen (Alibaba), the model",
         ),
         ("hf.co/bartowski/Qwen_Qwen3-30B-A3B-GGUF:Q4_K_M", "Family", "Qwen 3 (Alibaba)"),
         ("Qwen3-30B-A3B", "Size", "30B parameters | 3B active per token"),
@@ -177,12 +177,14 @@ def test_lookup_that_settles_the_format_drops_the_both_readings_line() -> None:
 def test_name_with_two_families() -> None:
     name = "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-v2"
     rows = rows_of(name)
-    assert rows["Family"] == "Qwen 3.5 (Alibaba) | Claude 4.6 (Anthropic)"
+    assert rows["Family"] == "Qwen 3.5 (Alibaba), the model | Claude 4.6 (Anthropic), a source"
+    note = "Qwen is read as the model and Claude as a source: Claude is only offered as a hosted"
+    assert note in " ".join(text_of(ModelInfo(parse(name))).split())
     assert rows["Version"] == "v2"  # the trailing version belongs to neither family
     assert "Runs" not in rows  # a hosted family named as a source implies nothing
     cells = cells_of(ModelInfo(parse(name)))
-    assert ["Family", "Qwen 3.5 (Alibaba)", "name"] in cells
-    assert ["", "Claude 4.6 (Anthropic)", ""] in cells  # each family on its own line
+    assert ["Family", "Qwen 3.5 (Alibaba), the model", "name"] in cells
+    assert ["", "Claude 4.6 (Anthropic), a source", ""] in cells  # each family on its own line
 
 
 def test_verbose_adds_a_column_of_explanations() -> None:
@@ -327,3 +329,95 @@ def test_list_command_when_ollama_is_down(monkeypatch: pytest.MonkeyPatch) -> No
     result = runner.invoke(app, ["list"])
     assert result.exit_code == 1
     assert "Is Ollama running?" in result.output
+
+
+# ----------------------------------------------------------- roles, implied ----
+
+
+def test_families_without_a_stated_role_get_a_note_not_a_guess() -> None:
+    name = "lmms-lab/llava-onevision-qwen2-7b"
+    assert rows_of(name)["Family"] == "LLaVA | Qwen 2 (Alibaba)"
+    text = " ".join(text_of(ModelInfo(parse(name))).split())
+    assert "2 families are named. The name does not say which is the model" in text
+
+
+def test_one_family_gets_no_role_note() -> None:
+    text = text_of(ModelInfo(parse("qwen3.5:4b")))
+    assert "is read as the model" not in text
+    assert "families are named" not in text
+
+
+def test_inferred_rows_are_marked_as_implied() -> None:
+    cells = cells_of(ModelInfo(parse("claude-3-5-sonnet-20241022")))
+    assert ["Runs", "in the cloud (remote, not on your machine)", "name (implied)"] in cells
+    assert ["Tier", "sonnet tier (the mid-size option)", "name"] in cells
+
+    cells = cells_of(ModelInfo(parse("Qwen3-30B-A3B")))
+    assert ["Architecture", "mixture of experts", "name (implied)"] in cells
+    # A token that states it outright is not an inference.
+    assert ["Runs", "in the cloud (remote, not on your machine)", "name"] in cells_of(
+        ModelInfo(parse("gpt-oss:120b-cloud"))
+    )
+
+
+def test_verbose_says_why_a_row_is_implied() -> None:
+    rows = name_rows(parse("Qwen3-30B-A3B"))
+    (row,) = [row for row in rows if row.heading == "Architecture"]
+    assert row.source == "implied"
+    assert row.entries[0][1] is not None
+    assert row.entries[0][1].endswith("(implied by 'A3B' in the name)")
+
+
+# ----------------------------------------------------------------- compare ----
+
+
+def test_compare_rows_line_models_up_field_by_field() -> None:
+    infos = [
+        ModelInfo(parse("llama3.1:8b-instruct-q4_K_M")),
+        ModelInfo(parse("llama3.1:8b-q5_K_M")),
+    ]
+    rows = {heading: values for heading, _, values in compare_rows(infos)}
+    assert rows["Family"] == ["Llama 3.1 (Meta)", "Llama 3.1 (Meta)"]
+    assert rows["Tuning"] == ["instruction tuned (ready for chat)", None]
+    assert rows["Compression"][0] != rows["Compression"][1]
+    assert list(rows) == ["Family", "Size", "Tuning", "Compression"]
+
+
+def test_compare_rows_keep_looked_up_facts_apart() -> None:
+    rows = compare_rows([LOOKED_UP, ModelInfo(parse("qwen3.5:4b"))])
+    looked_up = [heading for heading, is_lookup, _ in rows if is_lookup]
+    assert looked_up == ["Runs", "Compression", "Context", "Tools", "License"]
+    assert ("Context", True, ["128k tokens", None]) in rows
+
+
+def test_compare_command() -> None:
+    names = ["llama3.1:8b-instruct-q4_K_M", "llama3.1:8b-instruct-q5_K_M"]
+    result = runner.invoke(app, ["compare", *names, "--offline"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    lines = {
+        line.split("\u2502")[1].strip(): line
+        for line in result.output.splitlines()
+        if "\u2502" in line
+    }
+    assert "same" in lines["Family"]
+    assert "differs" in lines["Compression"]
+    assert "Nothing was looked up" in result.output
+
+
+def test_compare_command_json() -> None:
+    result = runner.invoke(app, ["compare", "gemma4:12b", "gemma4:27b", "--offline", "--json"])
+    data = json.loads(result.output)
+    assert [model["input"] for model in data["models"]] == ["gemma4:12b", "gemma4:27b"]
+    size = next(field for field in data["fields"] if field["field"] == "Size")
+    assert size == {
+        "field": "Size",
+        "source": "name",
+        "values": ["12B parameters", "27B parameters"],
+        "differs": True,
+    }
+
+
+def test_compare_needs_two_names() -> None:
+    result = runner.invoke(app, ["compare", "gemma4:12b", "--offline"])
+    assert result.exit_code == 2
+    assert "at least two names" in result.output

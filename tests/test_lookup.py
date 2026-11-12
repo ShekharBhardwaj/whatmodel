@@ -214,8 +214,8 @@ def test_hosting_is_not_reported_without_evidence() -> None:
 
 
 def test_unknown_quantization_level_is_passed_through_unexplained() -> None:
-    (fact,) = ollama_facts({"details": {"quantization_level": "nvfp4"}})
-    assert (fact.value, fact.label, fact.explanation) == ("nvfp4", "nvfp4", None)
+    (fact,) = ollama_facts({"details": {"quantization_level": "zq9x"}})
+    assert (fact.value, fact.label, fact.explanation) == ("zq9x", "zq9x", None)
 
 
 # ------------------------------------------------------------ hugging face ----

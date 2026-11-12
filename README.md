@@ -122,6 +122,7 @@ A file name has nothing to look up, so every row comes from the name.
 ```text
 whatmodel <name>              explain one name
 whatmodel <name> <name>...    explain several
+whatmodel compare <a> <b>     put names side by side and mark what differs
 whatmodel list                explain every model installed in local Ollama
 whatmodel tokens              print the token dictionary
 ```
@@ -140,7 +141,31 @@ Accepted name formats:
 - Hugging Face: `org/repo`, or a pasted `https://huggingface.co/org/repo` link
 - File names: `Llama-3-8B-Instruct.Q4_K_M.gguf`, with or without a folder in front
 
-A model that happens to be called `list` or `tokens` can be explained with `whatmodel explain list`.
+A model that happens to be called `list`, `compare` or `tokens` can be explained with `whatmodel explain list`.
+
+### Comparing names
+
+```console
+$ whatmodel compare llama3.1:8b-instruct-q4_K_M llama3.1:8b-instruct-q5_K_M --offline
+
+┌─────────────┬──────────────────────────┬───────────────────────────┬─────────┐
+│             │ llama3.1:8b-instruct-q4_ │ llama3.1:8b-instruct-q5_K │         │
+│ Field       │ K_M                      │ _M                        │ Same?   │
+├─────────────┼──────────────────────────┼───────────────────────────┼─────────┤
+│ Family      │ Llama 3.1 (Meta)         │ Llama 3.1 (Meta)          │ same    │
+├─────────────┼──────────────────────────┼───────────────────────────┼─────────┤
+│ Size        │ 8B parameters            │ 8B parameters             │ same    │
+├─────────────┼──────────────────────────┼───────────────────────────┼─────────┤
+│ Tuning      │ instruction tuned (ready │ instruction tuned (ready  │ same    │
+│             │ for chat)                │ for chat)                 │         │
+├─────────────┼──────────────────────────┼───────────────────────────┼─────────┤
+│ Compression │ 4-bit (Q4_K_M, the       │ 5-bit (Q5_K_M, the        │ differs │
+│             │ balanced variant)        │ balanced variant)         │         │
+└─────────────┴──────────────────────────┴───────────────────────────┴─────────┘
+Every row is read from the names. Nothing was looked up.
+```
+
+Without `--offline` the looked-up facts are compared too, below a divider. `--json` gives the same rows as data.
 
 ### Unknown and ambiguous tokens
 
@@ -167,6 +192,33 @@ The same rule covers what a name leaves out. A name alone cannot show where a mo
 
 The same applies to a name such as `org/model` with no tag, which fits both a Hugging Face repo and an Ollama model. Both readings are named unless a lookup settles which one it is.
 
+### Names with two families
+
+Fine-tunes and distillations often name two model families. whatmodel says which one is the model only when the name settles it:
+
+```console
+$ whatmodel deepseek-ai/DeepSeek-R1-Distill-Qwen-7B --offline
+
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+┌───────────┬──────────────────────────────────┬────────┐
+│ Field     │ Value                            │ Source │
+├───────────┼──────────────────────────────────┼────────┤
+│ Publisher │ DeepSeek                         │ name   │
+├───────────┼──────────────────────────────────┼────────┤
+│ Family    │ DeepSeek R1 (DeepSeek), a source │ name   │
+│           │ Qwen (Alibaba), the model        │        │
+├───────────┼──────────────────────────────────┼────────┤
+│ Size      │ 7B parameters                    │ name   │
+├───────────┼──────────────────────────────────┼────────┤
+│ Tuning    │ distilled                        │ name   │
+└───────────┴──────────────────────────────────┴────────┘
+Qwen is read as the model and DeepSeek R1 as a source: the family right after
+'Distill' is the one that was trained.
+Read as a Hugging Face repo or an Ollama model (tag latest).
+```
+
+Two rules are used. The family right after `Distill` is the one that was trained. A family that is only offered as a hosted service, such as Claude, has no weights to share, so it is read as a source. When neither rule applies, the output says the name leaves it open.
+
 ### Where the facts come from
 
 The lookup step tries two sources in order and merges them:
@@ -174,7 +226,9 @@ The lookup step tries two sources in order and merges them:
 1. The local Ollama API (`/api/show` and `/api/tags`), for models you have installed.
 2. The Hugging Face Hub API, for names that contain `org/repo`.
 
-Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
+Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
+
+A Source of `name (implied)` marks a row that no token states outright but another token settles. `A3B` (3B active parameters) implies a mixture-of-experts design, for example. Run with `-v` to see the reason.
 
 ## Library
 
@@ -184,6 +238,7 @@ from whatmodel import parse, explain
 parsed = parse("qwen3.5:4b")  # the name only, no network
 parsed.family, parsed.version, parsed.size  # ('qwen', '3.5', '4B')
 parsed.unknown  # tokens the dictionary does not know
+parsed.family_roles  # {'qwen': 'model', 'claude': 'source'} when a name has two families
 
 info = explain("qwen3.5:4b")  # the name plus lookups
 info.facts  # looked-up facts, each with its source
@@ -191,6 +246,10 @@ info.to_dict()  # the same data --json prints
 ```
 
 `explain(name, offline=True)` makes no requests at all.
+
+## Coverage
+
+Measured on 5,918 popular Ollama and Hugging Face names on 2026-11-12, whatmodel read 75% of names with no unknown token, and knew 94% of all tokens. New model families appear every week, so the rest are reported as unknown until someone adds them. `scripts/coverage.py` repeats the measurement on any list of names.
 
 ## What the name cannot tell you
 

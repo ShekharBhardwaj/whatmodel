@@ -23,7 +23,7 @@ from whatmodel.lookup import (
     explain,
     list_installed,
 )
-from whatmodel.render import print_info, render_tokens
+from whatmodel.render import compare_rows, print_info, render_compare, render_tokens
 
 _GROUP_OPTIONS = frozenset({"--help", "-h", "--version"})
 
@@ -130,6 +130,43 @@ def explain_command(
     """Explain one or more model names. This is what `whatmodel <name>` runs."""
     infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url)
     _report(infos, errors, as_json=as_json, as_list=len(names) > 1, verbose=verbose)
+
+
+@app.command("compare")
+def compare_command(
+    names: Annotated[list[str], typer.Argument(help="Two or more model names to compare.")],
+    as_json: JsonOption = False,
+    offline: OfflineOption = False,
+    ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
+) -> None:
+    """Put two or more model names side by side and mark the fields that differ."""
+    if len(names) < 2:
+        typer.echo("whatmodel: compare needs at least two names.", err=True)
+        raise typer.Exit(code=2)
+    infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url)
+    if as_json:
+        _print_json(
+            {
+                "models": [info.to_dict() for info in infos],
+                "fields": [
+                    {
+                        "field": heading,
+                        "source": "lookup" if looked_up else "name",
+                        "values": values,
+                        "differs": len(set(values)) > 1,
+                    }
+                    for heading, looked_up, values in compare_rows(infos)
+                ],
+            }
+        )
+    elif infos:
+        console = Console()
+        console.print(render_compare(infos))
+        console.print()
+    for error in errors:
+        typer.echo(f"whatmodel: {error}", err=True)
+    if errors:
+        raise typer.Exit(code=1)
 
 
 @app.command("list")

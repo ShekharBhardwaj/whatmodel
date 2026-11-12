@@ -31,6 +31,7 @@ from whatmodel.parser import (
     KIND_FILE,
     KIND_HUGGINGFACE,
     KIND_OLLAMA,
+    ROLE_MODEL,
     ParsedName,
 )
 
@@ -54,7 +55,17 @@ _KIND_PHRASES = {
     KIND_FILE: "a model file",
 }
 
-_SOURCE_NAMES = {SOURCE_OLLAMA: "local Ollama", SOURCE_HUGGINGFACE: "Hugging Face"}
+#: Source of a row that no token states outright but another token settles.
+SOURCE_IMPLIED = "implied"
+
+_SOURCE_NAMES = {
+    SOURCE_OLLAMA: "local Ollama",
+    SOURCE_HUGGINGFACE: "Hugging Face",
+    SOURCE_IMPLIED: "name (implied)",
+}
+
+_ROLE_SUFFIXES = {ROLE_MODEL: "the model"}
+_ROLE_SUFFIX_OTHER = "a source"
 
 _MISS_REASONS = {
     (SOURCE_OLLAMA, STATUS_NOT_FOUND): "not installed in local Ollama",
@@ -113,6 +124,9 @@ def _family_rows(parsed: ParsedName) -> tuple[list[tuple[str, str | None]], set[
         text = " ".join([reading.label, *(version.label for version in versions)])
         if reading.maker:
             text = f"{text} ({reading.maker})"
+        role = parsed.family_roles.get(reading.value)
+        if role is not None:
+            text = f"{text}, {_ROLE_SUFFIXES.get(role, _ROLE_SUFFIX_OTHER)}"
         notes = [reading.explanation, *(version.explanation for version in versions)]
         entries.append((text, " ".join(notes)))
     return entries, attached
@@ -127,14 +141,17 @@ def name_rows(parsed: ParsedName, dictionary: Dictionary | None = None) -> list[
         return by_heading.setdefault(heading, Row(heading))
 
     family_entries, attached = _family_rows(parsed)
-    readings = [
-        token.reading
+    readings: list[tuple[Reading, str | None]] = [
+        (token.reading, None)
         for position, token in enumerate(parsed.tokens)
         if token.reading is not None and position not in attached
     ]
     # The default tag is left out: it holds only if the name is used with Ollama,
     # which the name cannot establish. render_info says so in a note instead.
-    readings += [item.reading for item in parsed.implied if item.reason != DEFAULT_TAG_REASON]
+    readings += [
+        (item.reading, item.reason) for item in parsed.implied if item.reason != DEFAULT_TAG_REASON
+    ]
+    stated: set[str] = set()
     for category in dictionary.categories.values():
         if category.id == "family":
             if family_entries:
@@ -142,13 +159,22 @@ def name_rows(parsed: ParsedName, dictionary: Dictionary | None = None) -> list[
                 found.entries.extend(family_entries)
                 found.stacked = True
             continue
-        for reading in readings:
+        for reading, reason in readings:
             if reading.category == category.id:
-                entry = (reading.label, reading.explanation)
-                if entry not in row(category.heading).entries:
-                    row(category.heading).entries.append(entry)
+                note = (
+                    reading.explanation if reason is None else f"{reading.explanation} ({reason})"
+                )
+                if all(label != reading.label for label, _ in row(category.heading).entries):
+                    row(category.heading).entries.append((reading.label, note))
+                    if reason is None:
+                        stated.add(category.heading)
 
     rows = [found for found in by_heading.values() if found.entries]
+    for found in rows:
+        # A row no token states outright is marked, so an inference never
+        # passes for something the name says.
+        if found.heading not in stated and found.heading != dictionary.categories["family"].heading:
+            found.source = SOURCE_IMPLIED
     for token in parsed.ambiguous:
         options = [
             f"{reading.label} [{dictionary.categories[reading.category].heading.lower()}]"
@@ -221,6 +247,27 @@ def _kinds_line(info: ModelInfo) -> str | None:
     return " or ".join(phrases)
 
 
+def _roles_line(parsed: ParsedName, dictionary: Dictionary | None = None) -> str | None:
+    """Say which family is the model, or that the name leaves it open."""
+    dictionary = dictionary or get_dictionary()
+    labels: dict[str, str] = {}
+    for token in parsed.tokens:
+        reading = token.reading
+        if reading is not None and reading.category == "family":
+            labels.setdefault(reading.value, reading.label)
+    if len(labels) < 2:
+        return None
+    roles = parsed.family_roles
+    if not roles:
+        return (
+            f"{len(labels)} families are named. "
+            "The name does not say which is the model and which is a source."
+        )
+    model = next(labels[value] for value, role in roles.items() if role == ROLE_MODEL)
+    sources = " and ".join(labels[value] for value, role in roles.items() if role != ROLE_MODEL)
+    return f"{model} is read as the model and {sources} as a source: {parsed.family_roles_reason}."
+
+
 def _add_rows(table: Table, rows: list[Row], verbose: bool) -> None:
     for found in rows:
         joiner = "\n" if found.stacked else ", "
@@ -264,6 +311,9 @@ def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
         _add_rows(table, looked_up, verbose)
 
     captions: list[str] = []
+    roles = _roles_line(parsed)
+    if roles:
+        captions.append(roles)
     kinds = _kinds_line(info)
     if kinds:
         captions.append(f"Read as {kinds}.")
@@ -274,6 +324,74 @@ def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
         captions.append(f"Nothing looked up: {note}.")
     notes = [Text(caption, style="dim") for caption in captions]
     return Padding(Group(table, *notes), (1, 0, 0, 0))
+
+
+def _cell(found: Row | None) -> str | None:
+    if found is None:
+        return None
+    return ("\n" if found.stacked else ", ").join(label for label, _ in found.entries)
+
+
+def compare_rows(infos: list[ModelInfo]) -> list[tuple[str, bool, list[str | None]]]:
+    """Line the models up field by field.
+
+    Returns ``(heading, looked_up, values)`` rows, one value per model and
+    ``None`` where a model has nothing for that field. Fields read from the
+    name come first, then looked-up fields, each group in its usual order.
+    """
+    dictionary = get_dictionary()
+    name_order = list(dict.fromkeys(c.heading for c in dictionary.categories.values()))
+    name_order += ["Ambiguous", "Unknown"]
+    fact_order = list(FACT_HEADINGS.values())
+    result: list[tuple[str, bool, list[str | None]]] = []
+    for looked_up, order, rows_of in (
+        (False, name_order, lambda info: name_rows(info.parsed, dictionary)),
+        (True, fact_order, lookup_rows),
+    ):
+        per_model = [{found.heading: found for found in rows_of(info)} for info in infos]
+        headings = list(dict.fromkeys(heading for rows in per_model for heading in rows))
+        headings.sort(key=lambda h: order.index(h) if h in order else len(order))
+        result.extend(
+            (heading, looked_up, [_cell(rows.get(heading)) for rows in per_model])
+            for heading in headings
+        )
+    return result
+
+
+def render_compare(infos: list[ModelInfo]) -> RenderableType:
+    """Build one table with a column per model, marking the fields that differ."""
+    table = Table(
+        box=box.SQUARE,
+        show_lines=True,
+        header_style="bold",
+        border_style="dim",
+    )
+    table.add_column("Field", no_wrap=True)
+    for info in infos:
+        table.add_column(info.parsed.raw, overflow="fold")
+    table.add_column("Same?", no_wrap=True)
+
+    rows = compare_rows(infos)
+    in_lookups = False
+    for heading, looked_up, values in rows:
+        if looked_up and not in_lookups:
+            table.add_section()
+            in_lookups = True
+        differs = len(set(values)) > 1
+        style = "" if differs else "dim"
+        cells = [Text(heading, style="cyan")]
+        cells += [Text(value if value is not None else "-", style=style) for value in values]
+        cells.append(Text("differs", style="yellow") if differs else Text("same", style="dim"))
+        table.add_row(*cells)
+
+    notes: list[str] = []
+    if in_lookups:
+        notes.append(
+            "Rows above the divider are read from the names. Rows below it were looked up."
+        )
+    elif rows:
+        notes.append("Every row is read from the names. Nothing was looked up.")
+    return Padding(Group(table, *(Text(note, style="dim") for note in notes)), (1, 0, 0, 0))
 
 
 def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
@@ -313,10 +431,12 @@ def print_info(console: Console, info: ModelInfo, *, verbose: bool = False) -> N
 __all__ = [
     "FACT_HEADINGS",
     "Row",
+    "compare_rows",
     "lookup_note",
     "lookup_rows",
     "name_rows",
     "print_info",
+    "render_compare",
     "render_info",
     "render_tokens",
 ]

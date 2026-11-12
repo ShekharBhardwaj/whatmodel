@@ -38,6 +38,16 @@ uv run pytest
 
 Label the pull request `tokens` so it lands under "New tokens" in the release notes.
 
+## Finding tokens worth adding
+
+`scripts/coverage.py` reads a file with one model name per line, runs the offline name reader on each, and lists the tokens it could not explain, most common first:
+
+```bash
+uv run python scripts/coverage.py names.txt --top 50
+```
+
+Only add a token when you know what it means. A token left as unknown is correct; a guessed meaning is a bug.
+
 ## Entry fields
 
 | Field | Required | Meaning |

@@ -240,6 +240,36 @@ tokens:
     label: Stability AI
     explanation: Stability AI's own account, so the upload comes from the team that trained the model.
 
+  - pattern: openai-community
+    category: org
+    label: OpenAI community (mirrors)
+    explanation: 'A Hugging Face account that hosts OpenAI''s older open models, such as GPT-2.'
+
+  - pattern: eleutherai
+    category: org
+    label: EleutherAI
+    explanation: A research group known for open models and evaluation tools.
+
+  - pattern: allenai
+    category: org
+    label: Allen Institute for AI
+    explanation: 'The Allen Institute for AI''s own account, home of the OLMo models.'
+
+  - pattern: openbmb
+    category: org
+    label: OpenBMB
+    explanation: 'OpenBMB''s own account, home of the MiniCPM models.'
+
+  - pattern: redhatai
+    category: org
+    label: Red Hat AI (compressed versions)
+    explanation: 'Red Hat''s account for compressed versions of other teams'' models, so not the original author.'
+
+  - pattern: huihui-ai
+    category: org
+    label: huihui-ai (abliterated versions)
+    explanation: 'A community publisher of other teams'' models with their refusals removed, so not the original author.'
+
   # -------------------------------------------------------------- family ----
   - pattern: llama
     category: family
@@ -484,7 +514,7 @@ tokens:
     maker: NVIDIA
     explanation: NVIDIA's family of open-weight models.
 
-  - pattern: hermes
+  - pattern: [hermes, nous-hermes]
     category: family
     label: Hermes
     maker: Nous Research
@@ -590,6 +620,120 @@ tokens:
     label: Falcon
     maker: Technology Innovation Institute
     explanation: The open-weight model family from the Technology Innovation Institute in Abu Dhabi.
+
+  - pattern: orca-mini
+    category: family
+    label: Orca Mini
+    maker: Pankaj Mathur
+    explanation: 'Community fine-tunes of open base models, trained on explanation-style data.'
+
+  - pattern: sqlcoder
+    category: family
+    label: SQLCoder
+    maker: Defog
+    explanation: 'Defog''s models for turning plain-English questions into SQL queries.'
+
+  - pattern: pythia
+    category: family
+    label: Pythia
+    maker: EleutherAI
+    explanation: 'EleutherAI''s small research models, released to study how models learn.'
+
+  - pattern: gpt-neo
+    category: family
+    label: GPT-Neo
+    maker: EleutherAI
+    explanation: 'EleutherAI''s early open models built to follow the GPT-3 design.'
+
+  - pattern: florence
+    category: family
+    label: Florence
+    maker: Microsoft
+    explanation: 'Microsoft''s vision models for describing, reading and locating things in images.'
+
+  - pattern: internvl
+    category: family
+    label: InternVL
+    maker: OpenGVLab
+    explanation: 'OpenGVLab''s models that read images as well as text.'
+
+  - pattern: exaone
+    category: family
+    label: EXAONE
+    maker: LG AI Research
+    explanation: 'LG AI Research''s models, built for both Korean and English.'
+
+  - pattern: [olmo, olmoe]
+    category: family
+    label: OLMo
+    maker: Allen Institute for AI
+    explanation: 'The Allen Institute for AI''s fully open models, released with their training data and code.'
+
+  - pattern: olmocr
+    category: family
+    label: olmOCR
+    maker: Allen Institute for AI
+    explanation: 'The Allen Institute for AI''s models for turning scanned pages and PDFs into text.'
+
+  - pattern: molmo
+    category: family
+    label: Molmo
+    maker: Allen Institute for AI
+    explanation: 'The Allen Institute for AI''s models that read images and can point at things in them.'
+
+  - pattern: all-minilm
+    category: family
+    label: all-MiniLM
+    maker: Sentence Transformers
+    explanation: Very small embedding models for search and comparing sentences.
+
+  - pattern: solar
+    category: family
+    label: Solar
+    maker: Upstage
+    explanation: 'Upstage''s general-purpose models.'
+
+  - pattern: voxtral
+    category: family
+    label: Voxtral
+    maker: Mistral AI
+    explanation: 'Mistral AI''s models that take speech and audio as input.'
+
+  - pattern: flux
+    category: family
+    label: FLUX
+    maker: Black Forest Labs
+    explanation: 'Black Forest Labs'' models that generate images from text, so not a chat model.'
+
+  - pattern: translategemma
+    category: family
+    label: TranslateGemma
+    maker: Google
+    explanation: A Gemma variant built for translating between languages.
+
+  - pattern: t5gemma
+    category: family
+    label: T5Gemma
+    maker: Google
+    explanation: A Gemma variant rebuilt in an encoder-decoder layout.
+
+  - pattern: paddleocr
+    category: family
+    label: PaddleOCR
+    maker: Baidu
+    explanation: 'Baidu''s models for reading text out of images and documents.'
+
+  - pattern: minicpm-v
+    category: family
+    label: MiniCPM-V
+    maker: OpenBMB
+    explanation: 'OpenBMB''s small models that read images as well as text.'
+
+  - pattern: minicpm-o
+    category: family
+    label: MiniCPM-o
+    maker: OpenBMB
+    explanation: 'OpenBMB''s small models that take images, audio and text.'
 
   # ------------------------------------------------------------- version ----
   - pattern: '\d{1,2}(?:\.\d{1,2}){0,2}'
@@ -704,6 +848,14 @@ tokens:
     label: dense
     explanation: Every parameter is used for every token, which is how most models work.
 
+  - pattern: '(?P<count>\d{1,3})e'
+    category: architecture
+    label: 'mixture of experts ({count} experts)'
+    explanation: 'Built from {count} expert sub-networks of which only a few run for each token.'
+    regex: true
+    value: moe
+    examples: [16e, 128E]
+
   # ---------------------------------------------------------------- tier ----
   - pattern: pro
     category: tier
@@ -801,6 +953,16 @@ tokens:
     label: opus tier (the most capable option)
     explanation: Anthropic's name for its largest and most capable model in a generation.
 
+  - pattern: scout
+    category: tier
+    label: scout (the smaller Llama 4 model)
+    explanation: The smaller of the two Llama 4 models.
+
+  - pattern: maverick
+    category: tier
+    label: maverick (the larger Llama 4 model)
+    explanation: The larger of the two Llama 4 models.
+
   # -------------------------------------------------------------- tuning ----
   - pattern: [it, instruct]
     category: tuning
@@ -862,6 +1024,72 @@ tokens:
     category: tuning
     label: abliterated (refusals removed)
     explanation: Edited to remove the model's built-in tendency to refuse requests, without retraining it.
+
+  - pattern: text
+    category: tuning
+    label: text completion (not tuned for chat)
+    explanation: Continues whatever text it is given rather than answering in a chat format.
+
+  - pattern: python
+    category: tuning
+    label: Python specialist
+    explanation: Fine-tuned further on Python code.
+
+  - pattern: coding
+    category: tuning
+    label: code tuned
+    explanation: Trained or fine-tuned mainly for writing and explaining code.
+    value: code
+
+  - pattern: math
+    category: tuning
+    label: math tuned
+    explanation: Trained or fine-tuned mainly for solving math problems.
+
+  - pattern: ocr
+    category: tuning
+    label: reads text from images (OCR)
+    explanation: Built to turn images of documents into text.
+
+  - pattern: tts
+    category: tuning
+    label: text to speech
+    explanation: 'Turns written text into spoken audio, so not a chat model.'
+
+  - pattern: asr
+    category: tuning
+    label: speech recognition
+    explanation: 'Turns spoken audio into written text, so not a chat model.'
+
+  - pattern: audio
+    category: tuning
+    label: audio
+    explanation: Takes or produces audio as well as text.
+
+  - pattern: omni
+    category: tuning
+    label: omni (several kinds of input)
+    explanation: 'Handles several kinds of input, typically text, images and audio.'
+
+  - pattern: ft
+    category: tuning
+    label: fine-tuned
+    explanation: Trained further on specific tasks after its initial training.
+
+  - pattern: nsfw
+    category: tuning
+    label: NSFW (adult content)
+    explanation: Fine-tuned to produce adult content the original model would refuse.
+
+  - pattern: heretic
+    category: tuning
+    label: abliterated with Heretic
+    explanation: 'Edited with the Heretic tool to remove the model''s built-in tendency to refuse requests.'
+
+  - pattern: random
+    category: tuning
+    label: random weights (test model)
+    explanation: 'Filled with random numbers for testing software, so it cannot produce meaningful text.'
 
   # -------------------------------------------------------- quantization ----
   - pattern: 'q(?P<bits>[2-8])_k_s'
@@ -983,6 +1211,53 @@ tokens:
     label: importance-matrix calibrated
     explanation: Compressed with the help of sample text that shows which weights matter most, which keeps more quality at the same size.
 
+  - pattern: fp8
+    category: quantization
+    label: 8-bit floating point (FP8)
+    explanation: 'Compressed to 8-bit floating-point numbers, about half the size of the original with little quality loss.'
+    value: FP8
+
+  - pattern: fp8-dynamic
+    category: quantization
+    label: '8-bit floating point (FP8, dynamic)'
+    explanation: 'Weights are stored as 8-bit floating-point numbers, and the values flowing through the model are compressed on the fly.'
+    value: FP8-dynamic
+
+  - pattern: nvfp4
+    category: quantization
+    label: 4-bit floating point (NVFP4)
+    explanation: 'Compressed to NVIDIA''s 4-bit floating-point format, made for its recent GPUs.'
+    value: NVFP4
+
+  - pattern: [mxfp8, mxfp4]
+    category: quantization
+    label: '{text!u} (microscaling floating point)'
+    explanation: Compressed to a low-bit floating-point format where small blocks of numbers share a scale.
+    value: '{text!u}'
+
+  - pattern: bnb
+    category: quantization
+    label: bitsandbytes
+    explanation: 'Compressed with the bitsandbytes library, usually to 4 or 8 bits, for loading with Hugging Face Transformers.'
+
+  - pattern: 'w(?P<w>\d{1,2})a(?P<a>\d{1,2})'
+    category: quantization
+    label: '{w}-bit weights, {a}-bit activations'
+    explanation: 'The stored weights are compressed to {w} bits, while the values flowing through the model use {a} bits.'
+    regex: true
+    value: 'W{w}A{a}'
+    examples: [w4a16, W8A8]
+
+  - pattern: quantized
+    category: quantization
+    label: quantized
+    explanation: Compressed to use less memory; the name does not say how far.
+
+  - pattern: i1
+    category: quantization
+    label: imatrix quantized (i1)
+    explanation: 'Compressed with an importance matrix that protects the weights that matter most, as labelled by the publisher mradermacher.'
+
   # -------------------------------------------------------------- format ----
   - pattern: gguf
     category: format
@@ -1091,6 +1366,11 @@ tokens:
     label: 'dated {y}-{m}-{d}'
     explanation: A date stamp, so this snapshot is from {y}-{m}-{d}.
     examples: ['20250514']
+
+  - pattern: alpha
+    category: build
+    label: alpha (early test release)
+    explanation: An early test build that came before the beta and finished versions.
 
   # ------------------------------------------------------------- hosting ----
   - pattern: cloud
