@@ -383,6 +383,17 @@ def report_url(parsed: ParsedName) -> str:
     return f"{ISSUES_URL}?{query}"
 
 
+def name_summary(parsed: ParsedName) -> str:
+    """One line for what the name itself says."""
+    said: list[str] = []
+    for found in name_rows(parsed):
+        text = ", ".join(label for label, _ in found.entries)
+        if found.heading in ("Ambiguous", "Unknown"):
+            text = f"{found.heading.lower()}: {text}"
+        said.append(text)
+    return "; ".join(said)
+
+
 #: The looked-up facts worth a place in the one-line view, and how each is worded.
 _BRIEF_FACTS = {
     "Runs": "runs {}",
@@ -396,18 +407,13 @@ _BRIEF_FACTS = {
 
 def summary(info: ModelInfo) -> tuple[str, str]:
     """One line for what the name says and one for what was looked up."""
-    said: list[str] = []
-    for found in name_rows(info.parsed):
-        text = ", ".join(label for label, _ in found.entries)
-        if found.heading in ("Ambiguous", "Unknown"):
-            text = f"{found.heading.lower()}: {text}"
-        said.append(text)
+    said = name_summary(info.parsed)
     looked_up = [
         _BRIEF_FACTS[found.heading].format(found.entries[0][0])
         for found in lookup_rows(info)
         if found.heading in _BRIEF_FACTS
     ]
-    return "; ".join(said), "; ".join(looked_up)
+    return said, "; ".join(looked_up)
 
 
 def render_brief(infos: list[ModelInfo]) -> RenderableType:
@@ -490,6 +496,28 @@ def render_compare(infos: list[ModelInfo]) -> RenderableType:
     return Padding(Group(table, *(Text(note, style="dim") for note in notes)), (1, 0, 0, 0))
 
 
+def describe(info: ModelInfo) -> str:
+    """One model as plain text, a line per field. This is what ``print(info)`` shows."""
+    lines = [display_name(info.parsed)]
+    for row in [*name_rows(info.parsed), *lookup_rows(info)]:
+        value = "; ".join(label for label, _ in row.entries)
+        lines.append(f"- {row.heading}: {value} [{_SOURCE_NAMES.get(row.source, row.source)}]")
+    lines.extend(f"Note: {note}" for note in info_notes(info))
+    return "\n".join(lines)
+
+
+def describe_comparison(infos: list[ModelInfo]) -> str:
+    """Several models as plain text, a line per field, saying which fields differ."""
+    names = [display_name(info.parsed) for info in infos]
+    lines = ["Comparing: " + " | ".join(names)]
+    for heading, looked_up, values in compare_rows(infos):
+        cells = " | ".join(value if value is not None else "-" for value in values)
+        verdict = "differs" if len(set(values)) > 1 else "same"
+        origin = "looked up" if looked_up else "from the name"
+        lines.append(f"- {heading} ({origin}, {verdict}): {cells}")
+    return "\n".join(lines)
+
+
 def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
     """Build the listing for ``whatmodel tokens``."""
     dictionary = dictionary or get_dictionary()
@@ -537,11 +565,14 @@ __all__ = [
     "SOURCE_LABELS",
     "Row",
     "compare_rows",
+    "describe",
+    "describe_comparison",
     "display_name",
     "info_notes",
     "lookup_note",
     "lookup_rows",
     "name_rows",
+    "name_summary",
     "print_info",
     "render_brief",
     "render_compare",

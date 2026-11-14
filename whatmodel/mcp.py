@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from whatmodel.lookup import DEFAULT_OLLAMA_URL, ModelInfo, explain
-from whatmodel.render import compare_rows, display_name, info_notes, lookup_rows, name_rows
+from whatmodel.render import describe, describe_comparison
 
 LATEST_VERSION = "2026-07-28"
 #: Versions that open with ``initialize``, newest first.
@@ -106,33 +106,6 @@ class _RequestError(Exception):
 
 
 Explain = Callable[..., ModelInfo]
-
-
-def _source(row_source: str) -> str:
-    from whatmodel.render import SOURCE_LABELS
-
-    return SOURCE_LABELS.get(row_source, row_source)
-
-
-def describe(info: ModelInfo) -> str:
-    """One model as plain text, a line per field, for an assistant to read."""
-    lines = [display_name(info.parsed)]
-    for row in [*name_rows(info.parsed), *lookup_rows(info)]:
-        value = "; ".join(label for label, _ in row.entries)
-        lines.append(f"- {row.heading}: {value} [{_source(row.source)}]")
-    lines.extend(f"Note: {note}" for note in info_notes(info))
-    return "\n".join(lines)
-
-
-def describe_comparison(infos: list[ModelInfo]) -> str:
-    names = [display_name(info.parsed) for info in infos]
-    lines = ["Comparing: " + " | ".join(names)]
-    for heading, looked_up, values in compare_rows(infos):
-        cells = " | ".join(value if value is not None else "-" for value in values)
-        verdict = "differs" if len(set(values)) > 1 else "same"
-        origin = "looked up" if looked_up else "from the name"
-        lines.append(f"- {heading} ({origin}, {verdict}): {cells}")
-    return "\n".join(lines)
 
 
 class Server:
@@ -297,4 +270,4 @@ def serve(
             writer.flush()
 
 
-__all__ = ["SUPPORTED_VERSIONS", "TOOLS", "Server", "describe", "describe_comparison", "serve"]
+__all__ = ["SUPPORTED_VERSIONS", "TOOLS", "Server", "serve"]

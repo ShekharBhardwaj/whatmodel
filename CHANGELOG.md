@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `base` is read as a size right after the family and as "base model" after a size or variant word. With no context it still shows both readings.
 - A weekly workflow measures coverage on fresh names and keeps a report issue up to date.
 - Month-year date stamps (`05-2026`), the Fable and Mythos tiers, and `after` lists in the dictionary.
+- The library is easier to use: `whatmodel.compare()`, `whatmodel.explain_many()` and `whatmodel.meanings()`; direct fields on results such as `info.family`, `info.context_length` and `info.supports_tools`; `parsed.parameters` as a number; and `print(info)` or `rich.print(info)` to show a result.
 - `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
 
 ### Fixed

@@ -15,7 +15,7 @@ Endpoint and field names were checked against the Ollama API reference
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -35,6 +35,7 @@ from whatmodel.parser import (
 
 if TYPE_CHECKING:
     import httpx
+    from rich.console import RenderableType
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 HUGGINGFACE_URL = "https://huggingface.co"
@@ -102,6 +103,120 @@ class ModelInfo:
             if fact.key == key:
                 return fact
         return None
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """The value of a looked-up fact, or ``default`` if nothing was found for it."""
+        found = self.fact(key)
+        return default if found is None else found.value
+
+    # What the name says, without going through ``.parsed``.
+
+    @property
+    def name(self) -> str:
+        return self.parsed.raw
+
+    @property
+    def family(self) -> str | None:
+        return self.parsed.family
+
+    @property
+    def version(self) -> str | None:
+        return self.parsed.version
+
+    @property
+    def size(self) -> str | None:
+        return self.parsed.size
+
+    @property
+    def tier(self) -> str | None:
+        return self.parsed.tier
+
+    @property
+    def tuning(self) -> str | None:
+        return self.parsed.tuning
+
+    @property
+    def format(self) -> str | None:
+        return self.parsed.format
+
+    @property
+    def unknown(self) -> tuple[str, ...]:
+        return self.parsed.unknown
+
+    # The best answer available: a looked-up fact when there is one, else the name.
+
+    @property
+    def quantization(self) -> str | None:
+        """The compression, such as ``Q4_K_M``. A looked-up value wins over the name's."""
+        found = self.get("quantization")
+        return found if isinstance(found, str) else self.parsed.quantization
+
+    @property
+    def parameter_count(self) -> int | None:
+        """How many parameters, as a number. Looked up if possible, else from the name."""
+        found = self.get("parameter_count")
+        return found if isinstance(found, int) else self.parsed.parameters
+
+    @property
+    def runs(self) -> str | None:
+        """``"local"`` or ``"cloud"`` when a lookup or the name establishes it, else ``None``."""
+        found = self.get("hosting")
+        return found if isinstance(found, str) else self.parsed.hosting
+
+    # Looked-up facts only. ``None`` means nothing was found, never "no".
+
+    @property
+    def context_length(self) -> int | None:
+        found = self.get("context_length")
+        return found if isinstance(found, int) else None
+
+    @property
+    def supports_tools(self) -> bool | None:
+        return self._flag("tools")
+
+    @property
+    def supports_vision(self) -> bool | None:
+        return self._flag("vision")
+
+    @property
+    def supports_thinking(self) -> bool | None:
+        return self._flag("thinking")
+
+    @property
+    def license(self) -> str | None:
+        found = self.get("license")
+        return found if isinstance(found, str) else None
+
+    @property
+    def based_on(self) -> tuple[str, ...]:
+        """The models this one was made from, when a model card or file header says."""
+        found = self.get("base_model")
+        models = found.get("models") if isinstance(found, dict) else None
+        return tuple(models) if isinstance(models, list) else ()
+
+    def _flag(self, key: str) -> bool | None:
+        found = self.get(key)
+        return found if isinstance(found, bool) else None
+
+    @property
+    def summary(self) -> str:
+        """One line: what the name says, then the key looked-up facts."""
+        from whatmodel.render import summary
+
+        said, looked_up = summary(self)
+        return f"{said} | {looked_up}" if looked_up else said
+
+    def __str__(self) -> str:
+        """Plain text, one line per field, with where each fact came from."""
+        from whatmodel.render import describe
+
+        return describe(self)
+
+    def __rich__(self) -> RenderableType:
+        """Lets ``rich.print(info)`` draw the same table the command line prints."""
+        from whatmodel.render import render_info
+
+        return render_info(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -334,6 +449,38 @@ def _lookup_ollama(
         (m for m in models if isinstance(m, dict) and _same_model(m.get("name"), name)), None
     )
     return STATUS_OK, ollama_facts(show, summary)
+
+
+def explain_many(
+    names: Iterable[str],
+    *,
+    offline: bool = False,
+    ollama_url: str = DEFAULT_OLLAMA_URL,
+    timeout: float | None = None,
+    client: httpx.Client | None = None,
+    cache_dir: Path | None = None,
+) -> list[ModelInfo]:
+    """Explain several names, reusing one connection for all their lookups.
+
+    Takes the same options as :func:`explain` and returns the results in order.
+    """
+    owned = client is None and not offline
+    active = _new_client() if owned else client
+    try:
+        return [
+            explain(
+                name,
+                offline=offline,
+                ollama_url=ollama_url,
+                timeout=timeout,
+                client=active,
+                cache_dir=cache_dir,
+            )
+            for name in names
+        ]
+    finally:
+        if owned and active is not None:
+            active.close()
 
 
 def list_installed(

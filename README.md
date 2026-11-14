@@ -279,19 +279,42 @@ A Source of `name (implied)` marks a row that no token states outright but anoth
 ## Library
 
 ```python
-from whatmodel import parse, explain
+import whatmodel
 
-parsed = parse("qwen3.5:4b")  # the name only, no network
-parsed.family, parsed.version, parsed.size  # ('qwen', '3.5', '4B')
+parsed = whatmodel.parse("llama3.1:8b-instruct-q4_K_M")  # the name only, no network
+parsed.family, parsed.version, parsed.size  # ('llama', '3.1', '8B')
+parsed.parameters  # 8000000000
 parsed.unknown  # tokens the dictionary does not know
-parsed.family_roles  # {'qwen': 'model', 'claude': 'source'} when a name has two families
+print(parsed)  # Llama 3.1 (Meta); 8B parameters; instruction tuned (ready for chat); ...
 
-info = explain("qwen3.5:4b")  # the name plus lookups
-info.facts  # looked-up facts, each with its source
+info = whatmodel.explain("qwen3.5:4b")  # the name plus lookups
+info.family, info.size  # what the name says: ('qwen', '4B')
+info.context_length, info.supports_tools  # looked up: (262144, True)
+info.quantization, info.parameter_count  # looked up if possible, else from the name
+print(info)  # plain text, one line per field
 info.to_dict()  # the same data --json prints
 ```
 
-`explain(name, offline=True)` makes no requests at all.
+`explain(name, offline=True)` makes no requests at all. A looked-up field such as `context_length` or `supports_tools` is `None` when nothing was found, which is different from `False`.
+
+With [rich](https://github.com/Textualize/rich) installed, `rich.print(info)` draws the same table the command line prints.
+
+More helpers:
+
+```python
+whatmodel.explain_many(["gemma4:12b", "llama3:8b"])  # several names, one connection
+
+result = whatmodel.compare("llama3.1:8b-instruct-q4_K_M", "llama3.1:8b-instruct-q5_K_M")
+[(f.field, f.values) for f in result.differences]
+# [('Compression', ('4-bit (Q4_K_M, the balanced variant)', '5-bit (Q5_K_M, the balanced variant)'))]
+
+[r.label for r in whatmodel.meanings("qat")]  # ['quantization-aware trained']
+whatmodel.meanings("zzz")  # () for a token it does not know
+
+parsed.family_roles  # {'qwen': 'model', 'claude': 'source'} when a name has two families
+```
+
+`import whatmodel` is light: the HTTP and table libraries load only when a lookup or a table needs them.
 
 ## With AI assistants (MCP)
 

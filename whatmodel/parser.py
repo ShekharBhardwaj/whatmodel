@@ -194,6 +194,14 @@ class ParsedName:
         return self._first("architecture")
 
     @property
+    def parameters(self) -> int | None:
+        """The size as a number: ``8B`` is 8_000_000_000. ``None`` if the name gives no size."""
+        found = _SIZE_NUMBER.fullmatch(self.size or "")
+        if found is None:
+            return None
+        return round(float(found.group(1)) * _SIZE_UNITS[found.group(2).upper()])
+
+    @property
     def unknown(self) -> tuple[str, ...]:
         """The text of every token the dictionary does not know."""
         return tuple(token.text for token in self.tokens if not token.readings)
@@ -268,6 +276,12 @@ class ParsedName:
     def is_ambiguous(self) -> bool:
         """True when the name's format or any of its tokens has more than one reading."""
         return len(self.kinds) > 1 or bool(self.ambiguous)
+
+    def __str__(self) -> str:
+        """One line saying what the name states, such as ``Qwen 3.5 (Alibaba); 4B parameters``."""
+        from whatmodel.render import name_summary
+
+        return name_summary(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -390,6 +404,9 @@ def _raw_offset(run: Sequence[Piece], cut: int) -> int | None:
         remaining -= size + 1
     return None
 
+
+_SIZE_NUMBER = re.compile(r"(\d+(?:\.\d+)?)([MBT])", re.IGNORECASE)
+_SIZE_UNITS = {"M": 10**6, "B": 10**9, "T": 10**12}
 
 #: What comes before a token when nothing known does.
 _NO_CONTEXT = frozenset({AFTER_UNKNOWN})
