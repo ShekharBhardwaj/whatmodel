@@ -1,5 +1,7 @@
 # whatmodel
 
+[![Release](https://github.com/ShekharBhardwaj/whatmodel/actions/workflows/release.yml/badge.svg)](https://github.com/ShekharBhardwaj/whatmodel/actions/workflows/release.yml)
+
 Explain LLM model names in plain English: give it `gemma4:e2b-it-qat` and it tells you what each part means, plus the facts the name leaves out.
 
 It reads names from Ollama, Hugging Face and GGUF files. There are no LLM calls: every explanation comes from a plain data file and from model metadata.
