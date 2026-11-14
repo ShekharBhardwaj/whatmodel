@@ -275,9 +275,14 @@ tokens:
     label: Red Hat AI (compressed versions)
     explanation: 'Red Hat''s account for compressed versions of other teams'' models, so not the original author.'
 
-  - pattern: huihui-ai
+  - pattern: [huihui-ai, huihui]
     category: org
     label: huihui-ai (abliterated versions)
+    explanation: 'A community publisher of other teams'' models with their refusals removed, so not the original author.'
+
+  - pattern: hauhaucs
+    category: org
+    label: HauhauCS (uncensored versions)
     explanation: 'A community publisher of other teams'' models with their refusals removed, so not the original author.'
 
   # -------------------------------------------------------------- family ----
@@ -745,6 +750,131 @@ tokens:
     maker: OpenBMB
     explanation: 'OpenBMB''s small models that take images, audio and text.'
 
+  - pattern: ornith
+    category: family
+    label: Ornith
+    maker: DeepReinforce
+    explanation: 'DeepReinforce''s self-improving open models for agentic coding.'
+
+  - pattern: mimo
+    category: family
+    label: MiMo
+    maker: Xiaomi
+    explanation: 'Xiaomi''s models for code and agent workflows.'
+
+  - pattern: muse-glimmer
+    category: family
+    label: Muse Glimmer
+    maker: Meta
+    explanation: 'Meta''s open model built for always-on local agents.'
+
+  - pattern: [muse-spark-open, muse-spark]
+    category: family
+    label: Muse Spark
+    explanation: A natively multimodal model built for coding and agentic work.
+
+  - pattern: flint
+    category: family
+    label: Flint
+    maker: Recursive
+    explanation: 'Recursive''s mixture-of-experts model built for coding agents.'
+
+  - pattern: clef
+    category: family
+    label: Clef
+    maker: Cloudflare
+    explanation: 'Cloudflare''s multimodal model that turns a state and a list of typed questions into decisions.'
+
+  - pattern: north
+    category: family
+    label: North
+    maker: Cohere
+    explanation: 'Cohere''s models for developers, built for agentic software engineering.'
+
+  - pattern: laguna
+    category: family
+    label: Laguna
+    maker: Poolside
+    explanation: 'Poolside''s mixture-of-experts models built for agentic coding and long reasoning.'
+
+  - pattern: d1
+    category: family
+    label: d1
+    maker: Liquid AI
+    explanation: 'Liquid AI''s small decision model, built on its LFM vision models.'
+
+  - pattern: inkling
+    category: family
+    label: Inkling
+    maker: Thinking Machines
+    explanation: Models published by Thinking Machines.
+
+  - pattern: bonsai
+    category: family
+    label: Bonsai
+    maker: Prism ML
+    explanation: 'Prism ML''s models with 1-bit or ternary weights, a small fraction of the usual size.'
+
+  - pattern: swift
+    category: family
+    label: Swift
+    maker: UkisAI
+    explanation: 'UkisAI''s versions of other teams'' models, retrained to reach answers with fewer thinking tokens.'
+
+  - pattern: qwen-image
+    category: family
+    label: Qwen-Image
+    maker: Alibaba
+    explanation: 'Alibaba''s models that generate images from text, so not a chat model.'
+
+  - pattern: z-image
+    category: family
+    label: Z-Image
+    maker: Alibaba Tongyi-MAI
+    explanation: 'Models that generate images from text, so not a chat model.'
+
+  - pattern: kat-coder
+    category: family
+    label: KAT-Coder
+    maker: Kwaipilot
+    explanation: 'Kwaipilot''s models for agentic coding.'
+
+  - pattern: ling
+    category: family
+    label: Ling
+    maker: inclusionAI
+    explanation: 'inclusionAI''s sparse mixture-of-experts models.'
+
+  - pattern: surya
+    category: family
+    label: Surya
+    maker: Datalab
+    explanation: 'Datalab''s small models for reading text out of documents.'
+
+  - pattern: [hunyuan, hy]
+    category: family
+    label: Hunyuan
+    maker: Tencent
+    explanation: 'Tencent''s model family.'
+
+  - pattern: vibevoice
+    category: family
+    label: VibeVoice
+    maker: Microsoft
+    explanation: 'Microsoft''s speech models.'
+
+  - pattern: diffusiongemma
+    category: family
+    label: DiffusionGemma
+    maker: Google
+    explanation: 'A Gemma variant that writes text by diffusion, built for faster generation.'
+
+  - pattern: kimi-linear
+    category: family
+    label: Kimi Linear
+    maker: Moonshot AI
+    explanation: 'Moonshot AI''s models built on its Kimi Linear attention design, made for speed on long inputs.'
+
   # ------------------------------------------------------------- version ----
   - pattern: '\d{1,2}(?:\.\d{1,2}){0,2}'
     regex: true
@@ -793,6 +923,22 @@ tokens:
     label: '{n}o'
     explanation: Generation {n}o, where the o stands for omni, meaning one model handles text, images and audio.
     examples: [4o]
+
+  - pattern: 'm(?P<n>\d{1,2}(?:\.\d{1,2})?)'
+    category: version
+    label: 'M{n}'
+    explanation: 'Generation M{n} of this family, where a higher number is newer.'
+    regex: true
+    after: family
+    examples: [m3, M3.1]
+
+  - pattern: '(?P<n>\d{1,2}\.\d{1,2})v'
+    category: version
+    label: '{n}V (vision line)'
+    explanation: 'Version {n} of the family''s vision line, which reads images as well as text.'
+    regex: true
+    after: family
+    examples: [4.6V, 4.5v]
 
   # ---------------------------------------------------------------- size ----
   - pattern: '(?P<n>\d+(?:\.\d+)?)b'
@@ -973,6 +1119,26 @@ tokens:
     label: maverick (the larger Llama 4 model)
     explanation: The larger of the two Llama 4 models.
 
+  - pattern: super
+    category: tier
+    label: super (the large Nemotron model)
+    explanation: 'In NVIDIA''s Nemotron line, the large model built for complex multi-agent work.'
+
+  - pattern: bolt
+    category: tier
+    label: bolt (the compact Nemotron model)
+    explanation: 'In NVIDIA''s Nemotron line, the compact vision-language model for running locally.'
+
+  - pattern: lightning
+    category: tier
+    label: lightning (the always-on Nemotron model)
+    explanation: 'In NVIDIA''s Nemotron line, the model built for agents that run all the time.'
+
+  - pattern: klein
+    category: tier
+    label: 'klein (the small, fast FLUX model)'
+    explanation: 'In the FLUX line, the small model built for real-time image generation on consumer hardware.'
+
   # -------------------------------------------------------------- tuning ----
   - pattern: [it, instruct]
     category: tuning
@@ -1100,6 +1266,36 @@ tokens:
     category: tuning
     label: random weights (test model)
     explanation: 'Filled with random numbers for testing software, so it cannot produce meaningful text.'
+
+  - pattern: mtp
+    category: tuning
+    label: with multi-token prediction (MTP) head
+    explanation: 'Keeps the extra part of the model that predicts several tokens at once, which some runtimes use to generate faster.'
+
+  - pattern: dspark
+    category: tuning
+    label: DSpark draft model
+    explanation: 'A helper that drafts tokens for a paired larger model to check, which makes that model answer faster, so it is not a model to use on its own.'
+
+  - pattern: [dflash, dflash2]
+    category: tuning
+    label: DFlash draft model
+    explanation: 'Tied to DFlash, where a small helper drafts tokens for the main model to check so it answers faster, and the helper is not usable on its own.'
+
+  - pattern: streaming
+    category: tuning
+    label: streaming
+    explanation: 'Works on input as it arrives, such as live audio, rather than waiting for all of it.'
+
+  - pattern: hauhaucs-aggressive
+    category: tuning
+    label: 'uncensored, aggressive variant'
+    explanation: 'The publisher''s stronger setting: the model is fully unlocked and will not refuse prompts.'
+
+  - pattern: hauhaucs-balanced
+    category: tuning
+    label: 'uncensored, balanced variant'
+    explanation: 'The publisher''s milder setting, which keeps some of the original safety guardrails.'
 
   # -------------------------------------------------------- quantization ----
   - pattern: 'q(?P<bits>[2-8])_k_s'
@@ -1268,6 +1464,17 @@ tokens:
     label: imatrix quantized (i1)
     explanation: 'Compressed with an importance matrix that protects the weights that matter most, as labelled by the publisher mradermacher.'
 
+  - pattern: gsq-rco
+    category: quantization
+    label: mixed precision (GSQ-RCO)
+    explanation: 'Each part of the model is compressed by a different amount, chosen by how sensitive it is, using IST-DASLab''s GSQ and RCO methods.'
+    value: GSQ-RCO
+
+  - pattern: ternary
+    category: quantization
+    label: ternary weights (three possible values)
+    explanation: 'Every weight is limited to one of three values, which makes the file far smaller than the usual formats.'
+
   # -------------------------------------------------------------- format ----
   - pattern: gguf
     category: format
@@ -1303,6 +1510,16 @@ tokens:
     category: format
     label: Transformers layout
     explanation: Weights laid out for the Hugging Face Transformers library rather than in the maker's original layout.
+
+  - pattern: be
+    category: format
+    label: big-endian build (for IBM Z mainframes)
+    explanation: 'Stored in the byte order used by IBM Z and LinuxONE systems, so it will not load on ordinary PCs and Macs.'
+
+  - pattern: strata
+    category: format
+    label: packed for Strata
+    explanation: 'Packaged for Strata, a runtime for NVFP4 models on consumer graphics cards.'
 
   # ------------------------------------------------------------- context ----
   - pattern: '(?P<n>\d{1,4})k'

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A GGUF file on your machine has its header read, giving its real compression, context length, architecture and size with no network.
 - A "Based on" row names the model a Hugging Face repo or GGUF file was made from, and how.
 - A personal token file (`~/.config/whatmodel/tokens.yaml`) adds your own tokens on top of the built-in ones.
+- About 45 more tokens, each checked against the publisher's own page: families such as Ornith, MiMo, Flint, Clef, Laguna and Bonsai; `mtp`, `dspark` and `dflash`; the Nemotron tiers; `gsq-rco` and `ternary`.
 - `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
 
 ### Fixed

@@ -271,7 +271,7 @@ info.to_dict()  # the same data --json prints
 
 ## Coverage
 
-Measured on 5,918 popular Ollama and Hugging Face names on 2026-11-12, whatmodel read 75% of names with no unknown token, and knew 94% of all tokens. New model families appear every week, so the rest are reported as unknown until someone adds them. `scripts/coverage.py` repeats the measurement on any list of names.
+Measured on 5,918 popular Ollama and Hugging Face names on 2026-11-12, whatmodel read 80% of names with no unknown token, and knew 95% of all tokens. New model families appear every week, so the rest are reported as unknown until someone adds them. `scripts/coverage.py` repeats the measurement on any list of names.
 
 ## What the name cannot tell you
 
