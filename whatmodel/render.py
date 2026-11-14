@@ -16,6 +16,7 @@ from rich.text import Text
 
 from whatmodel.dictionary import Dictionary, Reading, get_dictionary
 from whatmodel.lookup import (
+    SOURCE_FILE,
     SOURCE_HUGGINGFACE,
     SOURCE_OLLAMA,
     STATUS_ERROR,
@@ -47,6 +48,7 @@ FACT_HEADINGS = {
     "parameter_count": "Parameters",
     "quantization": "Compression",
     "architecture": "Architecture",
+    "base_model": "Based on",
     "context_length": "Context",
     "tools": "Tools",
     "vision": "Vision",
@@ -69,6 +71,7 @@ SOURCE_IMPLIED = "implied"
 _SOURCE_NAMES = {
     SOURCE_OLLAMA: "local Ollama",
     SOURCE_HUGGINGFACE: "Hugging Face",
+    SOURCE_FILE: "the file",
     SOURCE_IMPLIED: "name (implied)",
 }
 
@@ -87,6 +90,7 @@ _MISS_REASONS = {
     (SOURCE_HUGGINGFACE, STATUS_UNREACHABLE): "Hugging Face could not be reached",
     (SOURCE_HUGGINGFACE, STATUS_TIMEOUT): "Hugging Face did not answer in time",
     (SOURCE_HUGGINGFACE, STATUS_ERROR): "Hugging Face returned an error",
+    (SOURCE_FILE, STATUS_ERROR): "the file could not be read as GGUF",
 }
 
 
@@ -101,6 +105,11 @@ class Row:
     stacked: bool = False
     #: Where the row's facts come from: "name", or a lookup source.
     source: str = "name"
+
+
+def display_name(parsed: ParsedName) -> str:
+    """The name to show. For a file this is the file name alone, never its folder."""
+    return parsed.filename or parsed.raw
 
 
 def _family_rows(parsed: ParsedName) -> tuple[list[tuple[str, str | None]], set[int]]:
@@ -308,6 +317,9 @@ def info_notes(info: ModelInfo) -> list[str]:
         captions.append(f"Read as {kinds}.")
     if parsed.tag_is_default and parsed.kinds == (KIND_OLLAMA,):
         captions.append(f"No tag in the name. Pulled with Ollama, it would mean {parsed.tag}.")
+    own = [t.text for t in parsed.tokens if any(r.personal for r in t.readings)]
+    if own:
+        captions.append(f"Read with your own token file: {', '.join(dict.fromkeys(own))}.")
     if info.cached:
         names = " and ".join(_SOURCE_NAMES.get(source, source) for source in info.cached)
         captions.append(f"{names} facts are from a saved copy, up to a day old.")
@@ -325,7 +337,7 @@ def render_info(info: ModelInfo, *, verbose: bool = False) -> RenderableType:
     """
     parsed = info.parsed
     table = Table(
-        title=parsed.raw,
+        title=display_name(parsed),
         title_style="bold",
         title_justify="left",
         box=box.SQUARE,
@@ -356,7 +368,10 @@ def report_url(parsed: ParsedName) -> str:
         {
             "labels": "tokens",
             "title": f"Unknown token: {tokens}",
-            "body": f"Seen in: `{parsed.raw}`\n\nWhat it means (with a source if you have one):\n",
+            "body": (
+                f"Seen in: `{display_name(parsed)}`\n\n"
+                "What it means (with a source if you have one):\n"
+            ),
         }
     )
     return f"{ISSUES_URL}?{query}"
@@ -365,6 +380,7 @@ def report_url(parsed: ParsedName) -> str:
 #: The looked-up facts worth a place in the one-line view, and how each is worded.
 _BRIEF_FACTS = {
     "Runs": "runs {}",
+    "Based on": "based on {}",
     "Parameters": "{} parameters",
     "Compression": "{}",
     "Context": "{} context",
@@ -396,7 +412,7 @@ def render_brief(infos: list[ModelInfo]) -> RenderableType:
     table.add_column("Looked up", overflow="fold")
     for info in infos:
         said, looked_up = summary(info)
-        table.add_row(info.parsed.raw, said or "-", Text(looked_up or "-", style="dim"))
+        table.add_row(display_name(info.parsed), said or "-", Text(looked_up or "-", style="dim"))
     return Padding(table, (1, 0, 0, 0))
 
 
@@ -442,7 +458,7 @@ def render_compare(infos: list[ModelInfo]) -> RenderableType:
     )
     table.add_column("Field", no_wrap=True)
     for info in infos:
-        table.add_column(info.parsed.raw, overflow="fold")
+        table.add_column(display_name(info.parsed), overflow="fold")
     table.add_column("Same?", no_wrap=True)
 
     rows = compare_rows(infos)
@@ -493,8 +509,12 @@ def render_tokens(dictionary: Dictionary | None = None) -> RenderableType:
         table.add_column("What it means", style="dim", overflow="fold", ratio=5)
         for entry in entries:
             shown = entry.examples if entry.is_regex else entry.patterns
-            table.add_row(", ".join(shown), entry.label, entry.explanation)
+            label = f"{entry.label} (yours)" if entry.personal else entry.label
+            table.add_row(", ".join(shown), label, entry.explanation)
         parts += [Text(), table]
+    if dictionary.personal_path is not None:
+        note = f"Entries marked (yours) come from {dictionary.personal_path}."
+        parts += [Text(), Text(note, style="dim")]
     return Padding(Group(*parts), (0, 0, 1, 0))
 
 
@@ -511,6 +531,7 @@ __all__ = [
     "SOURCE_LABELS",
     "Row",
     "compare_rows",
+    "display_name",
     "info_notes",
     "lookup_note",
     "lookup_rows",

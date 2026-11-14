@@ -17,9 +17,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from whatmodel import cache
+from whatmodel import cache, gguf
 from whatmodel.dictionary import get_dictionary
 from whatmodel.parser import (
     HUGGINGFACE_HOSTS,
@@ -31,8 +32,6 @@ from whatmodel.parser import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import httpx
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -44,6 +43,8 @@ HUGGINGFACE_TIMEOUT = 5.0
 
 SOURCE_OLLAMA = "ollama"
 SOURCE_HUGGINGFACE = "huggingface"
+#: A GGUF file on this machine, read directly.
+SOURCE_FILE = "file"
 
 STATUS_OK = "ok"
 STATUS_SKIPPED = "skipped"  # --offline
@@ -388,6 +389,107 @@ def _gguf_files(body: Mapping[str, Any]) -> list[tuple[str, int]]:
     return files
 
 
+#: How a repo relates to its base model, as the Hub tags it, in plain words.
+_RELATIONS = {
+    "quantized": "a compressed copy of it",
+    "finetune": "fine-tuned from it",
+    "adapter": "an adapter for it",
+    "merge": "merged from it",
+}
+
+
+def _base_model(card: Mapping[str, Any], tags: Sequence[Any]) -> Fact | None:
+    """The model this repo was made from, as its model card states it."""
+    raw = card.get("base_model")
+    names = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
+    names = [name.strip() for name in names if isinstance(name, str) and name.strip()]
+    relation = _text(card.get("base_model_relation"))
+    for tag in tags:
+        # The Hub also writes the relation into a tag: base_model:quantized:org/repo
+        parts = tag.split(":", 2) if isinstance(tag, str) else []
+        if len(parts) == 3 and parts[0] == "base_model" and parts[1] in _RELATIONS:
+            relation = relation or parts[1]
+            if parts[2] not in names:
+                names.append(parts[2])
+    if not names:
+        return None
+    label = ", ".join(names)
+    if relation in _RELATIONS:
+        phrase = _RELATIONS[relation]
+        if len(names) > 1:
+            phrase = phrase.replace("of it", "of these").replace("it", "these")
+        label = f"{label} ({phrase})"
+    value = {"models": names, "relation": relation if relation in _RELATIONS else None}
+    return Fact("base_model", value, label, SOURCE_HUGGINGFACE)
+
+
+def gguf_facts(metadata: Mapping[str, Any], size: int | None = None) -> list[Fact]:
+    """Turn the header of a GGUF file into facts."""
+    source = SOURCE_FILE
+    facts: list[Fact] = []
+    quantization = gguf.file_type_name(dict(metadata))
+    if quantization is not None:
+        facts.append(_described("quantization", quantization, "quantization", source))
+
+    architecture_name = _text(metadata.get("general.architecture"))
+    context = _positive_int(metadata.get(f"{architecture_name}.context_length"))
+    if context is not None:
+        facts.append(Fact("context_length", context, format_context(context), source))
+
+    parameters = _positive_int(metadata.get("general.parameter_count"))
+    size_label = _text(metadata.get("general.size_label"))
+    if parameters is not None:
+        facts.append(Fact("parameter_count", parameters, format_count(parameters), source))
+    elif size_label is not None:
+        facts.append(Fact("parameter_count", size_label, size_label, source))
+
+    if architecture_name is not None:
+        experts = _positive_int(metadata.get(f"{architecture_name}.expert_count"))
+        kind = "moe" if experts else "dense"
+        facts.append(_described("architecture", kind, "architecture", source))
+
+    template = _text(metadata.get("tokenizer.chat_template"))
+    if template is not None:
+        flag = "tools" in template
+        facts.append(
+            Fact("tools", flag, f"{_yes_no(flag)} (judged from the chat template)", source)
+        )
+
+    license_name = _text(metadata.get("general.license"))
+    if license_name:
+        facts.append(Fact("license", license_name, license_name, source))
+
+    count = _positive_int(metadata.get("general.base_model.count")) or 0
+    names: list[str] = []
+    for index in range(min(count, 8)):
+        name = _text(metadata.get(f"general.base_model.{index}.name"))
+        owner = _text(metadata.get(f"general.base_model.{index}.organization"))
+        if name is not None:
+            names.append(f"{name} ({owner})" if owner else name)
+    if names:
+        value = {"models": names, "relation": None}
+        facts.append(Fact("base_model", value, ", ".join(names), source))
+
+    if size is not None:
+        facts.append(Fact("file_size", size, format_bytes(size), source))
+    return facts
+
+
+def _lookup_file(name: str, parsed: ParsedName) -> tuple[str, list[Fact]]:
+    """Read the header of ``name`` if it is a GGUF file that exists on this machine."""
+    if KIND_FILE not in parsed.kinds:
+        return STATUS_NOT_APPLICABLE, []
+    try:
+        path = Path(name.strip()).expanduser()
+        if not path.is_file():
+            return STATUS_NOT_APPLICABLE, []  # just a file name, with no file behind it
+        metadata = gguf.read_metadata(path)
+        size = path.stat().st_size
+    except (OSError, ValueError):
+        return STATUS_ERROR, []
+    return STATUS_OK, gguf_facts(metadata, size)
+
+
 def huggingface_facts(
     body: Mapping[str, Any], wanted_quantization: str | None = None
 ) -> list[Fact]:
@@ -436,6 +538,10 @@ def huggingface_facts(
     )
     if license_name:
         facts.append(Fact("license", license_name, license_name, source))
+
+    based_on = _base_model(card, tags)
+    if based_on is not None:
+        facts.append(based_on)
 
     files = _gguf_files(body)
     wanted = (wanted_quantization or "").lower()
@@ -503,22 +609,26 @@ def explain(
 ) -> ModelInfo:
     """Explain a model name: Layer 1 from the name, then Layer 2 from lookups.
 
-    ``offline=True`` skips Layer 2 completely and makes no request. ``timeout``
+    ``offline=True`` makes no request. A GGUF file that exists on this machine
+    is still read, since that needs no network. ``timeout``
     overrides the per-source defaults. ``client`` lets a caller share or mock
     the HTTP client. ``cache_dir`` turns on a one-day on-disk cache of Hugging
     Face answers; without it nothing is read from or written to disk. Lookup
     failures never raise.
     """
     parsed = parse(name)
+    # A file on this machine is read whether or not the network may be used.
+    file_status, from_file = _lookup_file(name, parsed)
+    on_disk = {SOURCE_FILE: file_status} if file_status != STATUS_NOT_APPLICABLE else {}
     if offline:
         skipped = {SOURCE_OLLAMA: STATUS_SKIPPED, SOURCE_HUGGINGFACE: STATUS_SKIPPED}
-        return ModelInfo(parsed, (), skipped)
+        return ModelInfo(parsed, tuple(from_file), {**skipped, **on_disk})
 
     wants_ollama = _ollama_name(parsed) is not None
     wants_hub = _huggingface_repo(parsed) is not None
     if not (wants_ollama or wants_hub):
         nothing = {SOURCE_OLLAMA: STATUS_NOT_APPLICABLE, SOURCE_HUGGINGFACE: STATUS_NOT_APPLICABLE}
-        return ModelInfo(parsed, (), nothing)
+        return ModelInfo(parsed, tuple(from_file), {**nothing, **on_disk})
 
     owned = client is None
     active = client or _new_client()

@@ -15,6 +15,7 @@ from whatmodel.dictionary import (
     get_dictionary,
     load_dictionary,
     normalize,
+    personal_tokens_path,
     split_pieces,
 )
 
@@ -355,3 +356,107 @@ def test_load_reports_the_file_name(tmp_path: Any) -> None:
     wrong.write_text("schema: 9\n", encoding="utf-8")
     with pytest.raises(DictionaryError, match=r"wrong\.yaml: 'schema' must be 1"):
         load_dictionary(wrong)
+
+
+# ---------------------------------------------------------- personal tokens ----
+
+PERSONAL = """
+schema: 1
+categories:
+  team:
+    heading: Team
+    description: Which of our teams owns the model.
+tokens:
+  - pattern: acme
+    category: family
+    label: Acme Assistant
+    maker: Acme Corp
+    explanation: Our in-house fine-tunes.
+  - pattern: turbo
+    category: tier
+    label: turbo (our fast lane)
+    explanation: Served from the low-latency cluster.
+  - pattern: search
+    category: team
+    label: Search team
+    explanation: Owned by the search team.
+"""
+
+
+def _personal(tmp_path: Any, text: str = PERSONAL) -> Any:
+    path = tmp_path / "tokens.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_personal_tokens_are_added(tmp_path: Any) -> None:
+    dictionary = load_dictionary(personal=_personal(tmp_path))
+    (reading,) = dictionary.match("acme")
+    assert (reading.label, reading.maker, reading.personal) == ("Acme Assistant", "Acme Corp", True)
+    assert reading.to_dict()["personal"] is True
+    assert dictionary.match("search")[0].category == "team"
+    assert dictionary.personal_path == tmp_path / "tokens.yaml"
+    # Built-in tokens still work, and are not marked.
+    (qat,) = dictionary.match("qat")
+    assert qat.personal is False
+    assert "personal" not in qat.to_dict()
+
+
+def test_a_personal_meaning_replaces_the_built_in_one(
+    tmp_path: Any, dictionary: Dictionary
+) -> None:
+    assert dictionary.match("turbo")[0].label != "turbo (our fast lane)"
+    merged = load_dictionary(personal=_personal(tmp_path))
+    assert [reading.label for reading in merged.match("turbo")] == ["turbo (our fast lane)"]
+
+
+def test_the_shipped_dictionary_has_no_personal_entries(dictionary: Dictionary) -> None:
+    assert dictionary.personal_path is None
+    assert not any(entry.personal for entry in dictionary.entries)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("tokens: []", "'schema' must be 1"),
+        ("schema: 1\ntokens: nope", "'tokens' must be a list"),
+        ("schema: 1\nextra: 1", "unknown top-level key"),
+        ("- a list", "must be a mapping"),
+        ("schema: 1\ncategories:\n  family: {heading: X, description: Y}", "cannot be redefined"),
+        (
+            "schema: 1\ntokens:\n  - {pattern: x, category: nope, label: l, explanation: e}",
+            "unknown category 'nope'",
+        ),
+        ("schema: 1\ntokens: [oops", "not valid YAML"),
+    ],
+)
+def test_bad_personal_files_are_rejected(tmp_path: Any, text: str, message: str) -> None:
+    with pytest.raises(DictionaryError, match=message) as caught:
+        load_dictionary(personal=_personal(tmp_path, text))
+    assert "tokens.yaml" in str(caught.value)  # the message names the file at fault
+
+
+def test_a_broken_personal_file_never_stops_the_tool(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("WHATMODEL_TOKENS", str(_personal(tmp_path, "tokens: [oops")))
+    get_dictionary.cache_clear()
+    try:
+        found = get_dictionary()
+        assert found.personal_path is None
+        assert found.match("qat")
+        assert "ignoring your token file" in capsys.readouterr().err
+    finally:
+        get_dictionary.cache_clear()
+
+
+def test_the_personal_file_is_picked_up_from_the_environment(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WHATMODEL_TOKENS", str(_personal(tmp_path)))
+    get_dictionary.cache_clear()
+    try:
+        assert get_dictionary().match("acme")[0].personal is True
+        assert personal_tokens_path() == tmp_path / "tokens.yaml"
+    finally:
+        get_dictionary.cache_clear()

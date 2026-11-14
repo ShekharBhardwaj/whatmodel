@@ -6,8 +6,10 @@ about any particular token: every meaning comes from the data file.
 
 from __future__ import annotations
 
+import os
 import re
 import string
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -128,6 +130,8 @@ class Reading:
     maker: str | None = None
     #: (category, token) pairs this reading also implies; see ``implies`` in tokens.yaml.
     implies: tuple[tuple[str, str], ...] = field(default=(), repr=False, compare=False)
+    #: True when the meaning comes from the user's own token file.
+    personal: bool = field(default=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -138,6 +142,8 @@ class Reading:
         }
         if self.maker is not None:
             data["maker"] = self.maker
+        if self.personal:
+            data["personal"] = True
         return data
 
 
@@ -156,6 +162,8 @@ class Entry:
     after: str | None = None
     maker: str | None = None
     implies: tuple[tuple[str, str], ...] = ()
+    #: True for an entry from the user's own token file. It wins over built-in ones.
+    personal: bool = False
     #: Literal entries: normalized literal -> the literal as written, lowercased.
     literals: Mapping[str, str] = field(default_factory=dict, repr=False)
     #: Regex entries: one compiled pattern per ``patterns`` item.
@@ -187,6 +195,7 @@ class Entry:
             value=value,
             maker=self.maker,
             implies=self.implies,
+            personal=self.personal,
         )
 
 
@@ -202,9 +211,16 @@ class FusedSplit:
 class Dictionary:
     """All categories and entries, indexed for lookup."""
 
-    def __init__(self, categories: dict[str, Category], entries: tuple[Entry, ...]) -> None:
+    def __init__(
+        self,
+        categories: dict[str, Category],
+        entries: tuple[Entry, ...],
+        personal_path: Path | None = None,
+    ) -> None:
         self.categories = categories
         self.entries = entries
+        #: The user's own token file, when one was loaded.
+        self.personal_path = personal_path
         self._literal_index: dict[str, list[Entry]] = {}
         self._regex_entries: list[Entry] = []
         family_literals: set[str] = set()
@@ -237,6 +253,7 @@ class Dictionary:
         search to one category. ``ignore_context`` skips ``after`` constraints.
         """
         hits: list[tuple[int, Reading]] = []
+        personal = False
         for entry in (*self._literal_index.get(candidate, ()), *self._regex_entries):
             if category is not None and entry.category != category:
                 continue
@@ -245,9 +262,12 @@ class Dictionary:
             groups = entry.groups(candidate)
             if groups is not None:
                 hits.append((entry.index, entry.read(candidate, groups)))
+                personal = personal or entry.personal
         hits.sort(key=lambda hit: hit[0])
         readings: list[Reading] = []
         for _, reading in hits:
+            if personal and not reading.personal:
+                continue  # the user's own meaning replaces the built-in ones
             if reading not in readings:
                 readings.append(reading)
         return tuple(readings)
@@ -386,12 +406,19 @@ def _check_templates(
             )
 
 
-def _build_entry(index: int, raw: object, categories: Mapping[str, Category]) -> Entry:
-    where = f"tokens[{index}]"
+def _build_entry(
+    index: int,
+    raw: object,
+    categories: Mapping[str, Category],
+    *,
+    personal: bool = False,
+    position: int | None = None,
+) -> Entry:
+    where = f"tokens[{index if position is None else position}]"
     if not isinstance(raw, dict):
         raise _fail(where, "must be a mapping")
     if "pattern" in raw:
-        where = f"tokens[{index}] (pattern {raw['pattern']!r})"
+        where = f"{where} (pattern {raw['pattern']!r})"
     unknown = set(raw) - _ENTRY_KEYS
     if unknown:
         raise _fail(where, f"unknown key(s): {', '.join(sorted(map(str, unknown)))}")
@@ -454,6 +481,7 @@ def _build_entry(index: int, raw: object, categories: Mapping[str, Category]) ->
         after=after,
         maker=maker,
         implies=implies,
+        personal=personal,
         literals=literals,
         compiled=compiled,
     )
@@ -463,8 +491,33 @@ def _build_entry(index: int, raw: object, categories: Mapping[str, Category]) ->
     return entry
 
 
-def build_dictionary(data: object) -> Dictionary:
-    """Validate parsed YAML and build a :class:`Dictionary` from it."""
+def _personal_parts(extra: object) -> tuple[dict[str, Any], list[Any]]:
+    """Validate the shape of a personal token file and return its categories and tokens."""
+    if not isinstance(extra, dict):
+        raise DictionaryError("the file must be a mapping with 'schema' and 'tokens'")
+    unknown = set(extra) - _TOP_LEVEL_KEYS
+    if unknown:
+        raise DictionaryError(f"unknown top-level key(s): {', '.join(sorted(map(str, unknown)))}")
+    if extra.get("schema") != SCHEMA_VERSION:
+        raise DictionaryError(f"'schema' must be {SCHEMA_VERSION}, found {extra.get('schema')!r}")
+    categories = extra.get("categories") or {}
+    if not isinstance(categories, dict):
+        raise DictionaryError("'categories' must be a mapping")
+    tokens = extra.get("tokens") or []
+    if not isinstance(tokens, list):
+        raise DictionaryError("'tokens' must be a list")
+    return categories, tokens
+
+
+def build_dictionary(
+    data: object, extra: object = None, personal_path: Path | None = None
+) -> Dictionary:
+    """Validate parsed YAML and build a :class:`Dictionary` from it.
+
+    ``extra`` is the parsed content of a personal token file. Its entries are
+    added on top of ``data``, and where both give a token a meaning, the
+    personal one is used.
+    """
     if not isinstance(data, dict):
         raise DictionaryError("the file must be a mapping with 'schema', 'categories', 'tokens'")
     unknown = set(data) - _TOP_LEVEL_KEYS
@@ -472,16 +525,34 @@ def build_dictionary(data: object) -> Dictionary:
         raise DictionaryError(f"unknown top-level key(s): {', '.join(sorted(map(str, unknown)))}")
     if data.get("schema") != SCHEMA_VERSION:
         raise DictionaryError(f"'schema' must be {SCHEMA_VERSION}, found {data.get('schema')!r}")
-    categories = _build_categories(data.get("categories"))
+    raw_categories = data.get("categories")
     raw_tokens = data.get("tokens")
     if not isinstance(raw_tokens, list) or not raw_tokens:
         raise DictionaryError("'tokens' must be a non-empty list")
-    entries = tuple(_build_entry(index, raw, categories) for index, raw in enumerate(raw_tokens))
+    personal_tokens: list[Any] = []
+    if extra is not None:
+        more_categories, personal_tokens = _personal_parts(extra)
+        if isinstance(raw_categories, dict):
+            clash = sorted(set(more_categories) & set(raw_categories))
+            if clash:
+                raise DictionaryError(f"category '{clash[0]}' is built in and cannot be redefined")
+            raw_categories = {**raw_categories, **more_categories}
+    categories = _build_categories(raw_categories)
+    built_in = len(raw_tokens)
+    entries = tuple(
+        _build_entry(index, raw, categories) for index, raw in enumerate(raw_tokens)
+    ) + tuple(
+        _build_entry(built_in + index, raw, categories, personal=True, position=index)
+        for index, raw in enumerate(personal_tokens)
+    )
 
     seen: dict[tuple[str, str], int] = {}
     for entry in entries:
         for literal in entry.literals:
             key = (entry.category, literal)
+            if key in seen and entry.personal and not entries[seen[key]].personal:
+                seen[key] = entry.index  # a personal entry may redefine a built-in one
+                continue
             if key in seen:
                 raise DictionaryError(
                     f"tokens[{entry.index}]: literal {literal!r} is already defined for "
@@ -489,7 +560,7 @@ def build_dictionary(data: object) -> Dictionary:
                 )
             seen[key] = entry.index
 
-    dictionary = Dictionary(categories, entries)
+    dictionary = Dictionary(categories, entries, personal_path)
     for entry in entries:
         for target, token in entry.implies:
             if dictionary.describe(token, category=target) is None:
@@ -500,8 +571,29 @@ def build_dictionary(data: object) -> Dictionary:
     return dictionary
 
 
-def load_dictionary(path: str | Path | None = None) -> Dictionary:
-    """Load a dictionary file. With no ``path``, load the one shipped in the package."""
+#: Environment variable that names the personal token file.
+PERSONAL_ENV = "WHATMODEL_TOKENS"
+
+
+def personal_tokens_path() -> Path:
+    """Where the personal token file is looked for. ``WHATMODEL_TOKENS`` overrides it."""
+    override = os.environ.get(PERSONAL_ENV)
+    if override:
+        return Path(override).expanduser()
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "whatmodel" / "tokens.yaml"
+
+
+def load_dictionary(
+    path: str | Path | None = None, *, personal: str | Path | None = None
+) -> Dictionary:
+    """Load a dictionary file. With no ``path``, load the one shipped in the package.
+
+    ``personal`` names a personal token file to lay on top of it.
+    """
     if path is None:
         origin = "tokens.yaml"
         text = resources.files("whatmodel").joinpath("tokens.yaml").read_text(encoding="utf-8")
@@ -512,13 +604,34 @@ def load_dictionary(path: str | Path | None = None) -> Dictionary:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise DictionaryError(f"{origin}: not valid YAML: {exc}") from exc
+    if personal is None:
+        try:
+            return build_dictionary(data)
+        except DictionaryError as exc:
+            raise DictionaryError(f"{origin}: {exc}") from exc
+    personal_path = Path(personal)
     try:
-        return build_dictionary(data)
+        extra = yaml.safe_load(personal_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise DictionaryError(f"{personal_path}: not valid YAML: {exc}") from exc
+    try:
+        return build_dictionary(data, extra, personal_path)
     except DictionaryError as exc:
-        raise DictionaryError(f"{origin}: {exc}") from exc
+        raise DictionaryError(f"{personal_path}: {exc}") from exc
 
 
 @lru_cache(maxsize=1)
 def get_dictionary() -> Dictionary:
-    """Return the shipped dictionary, loaded once per process."""
+    """Return the dictionary, loaded once per process.
+
+    This is the shipped dictionary plus the personal token file, if there is
+    one. A personal file with a mistake in it is reported once on standard
+    error and left out, so a typo there never stops names from being explained.
+    """
+    personal = personal_tokens_path()
+    try:
+        if personal.is_file():
+            return load_dictionary(personal=personal)
+    except (DictionaryError, OSError) as exc:
+        print(f"whatmodel: ignoring your token file. {exc}", file=sys.stderr)
     return load_dictionary()

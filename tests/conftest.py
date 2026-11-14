@@ -34,3 +34,12 @@ def _private_cache(
 ) -> None:
     """Point the lookup cache at an empty folder, never at the developer's real one."""
     monkeypatch.setenv("WHATMODEL_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
+
+
+@pytest.fixture(autouse=True)
+def _no_personal_tokens(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Keep the developer's own token file out of the tests."""
+    missing = tmp_path_factory.mktemp("config") / "tokens.yaml"
+    monkeypatch.setenv("WHATMODEL_TOKENS", str(missing))

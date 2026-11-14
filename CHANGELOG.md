@@ -18,9 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hugging Face answers are cached on disk for a day. `--no-cache` turns it off.
 - Unknown tokens come with a link that opens a prefilled GitHub issue.
 - `docs/index.html` runs the name reader in the browser.
+- A GGUF file on your machine has its header read, giving its real compression, context length, architecture and size with no network.
+- A "Based on" row names the model a Hugging Face repo or GGUF file was made from, and how.
+- A personal token file (`~/.config/whatmodel/tokens.yaml`) adds your own tokens on top of the built-in ones.
 - `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
 
 ### Fixed
+
+- The folder of a local file is no longer shown in the table title or put in the report link.
 
 - A name that says nothing about hosting no longer gets a "Runs locally" row. Where a model runs is shown only when the name states it or a lookup confirms it; a model installed in local Ollama is reported as local by that lookup.
 - The `latest` tag Ollama would fill in is no longer shown as a Build row read from the name. It is a note below the table, since a bare name may not be an Ollama name at all.

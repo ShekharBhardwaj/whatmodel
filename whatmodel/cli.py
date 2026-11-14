@@ -308,6 +308,7 @@ def tokens_command(as_json: JsonOption = False) -> None:
                     "label": entry.label,
                     "explanation": entry.explanation,
                     "examples": list(entry.examples),
+                    "personal": entry.personal,
                 }
                 for entry in dictionary.entries
             ],

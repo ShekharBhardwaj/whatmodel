@@ -433,3 +433,34 @@ def test_format_context(tokens: int, text: str) -> None:
 )
 def test_format_bytes(size: int, text: str) -> None:
     assert format_bytes(size) == text
+
+
+# -------------------------------------------------------------- base model ----
+
+
+def test_base_model_comes_from_the_model_card() -> None:
+    body = {
+        "cardData": {"base_model": "Qwen/Qwen3-30B-A3B", "base_model_relation": "quantized"},
+        "tags": ["base_model:Qwen/Qwen3-30B-A3B", "base_model:quantized:Qwen/Qwen3-30B-A3B"],
+    }
+    (fact,) = huggingface_facts(body)
+    assert fact.key == "base_model"
+    assert fact.label == "Qwen/Qwen3-30B-A3B (a compressed copy of it)"
+    assert fact.value == {"models": ["Qwen/Qwen3-30B-A3B"], "relation": "quantized"}
+
+
+def test_base_model_without_a_stated_relation_claims_none() -> None:
+    (fact,) = huggingface_facts({"cardData": {"base_model": "meta-llama/Llama-3-8B-Instruct"}})
+    assert fact.label == "meta-llama/Llama-3-8B-Instruct"
+    assert fact.value["relation"] is None
+
+
+def test_several_base_models() -> None:
+    body = {"cardData": {"base_model": ["a/one", "b/two"], "base_model_relation": "merge"}}
+    (fact,) = huggingface_facts(body)
+    assert fact.label == "a/one, b/two (merged from these)"
+
+
+def test_no_base_model_means_no_row() -> None:
+    assert huggingface_facts({"cardData": {"license": "mit"}})[0].key == "license"
+    assert all(fact.key != "base_model" for fact in huggingface_facts({"tags": ["gguf"]}))

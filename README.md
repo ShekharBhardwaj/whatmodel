@@ -115,7 +115,7 @@ Llama-3-8B-Instruct.Q4_K_M.gguf
 └─────────────┴────────────────────────────────────────────┴────────┘
 ```
 
-A file name has nothing to look up, so every row comes from the name.
+This name has no file behind it, so every row comes from the name. Give the path to a real GGUF file and its header is read as well.
 
 ## Usage
 
@@ -131,7 +131,7 @@ whatmodel tokens              print the token dictionary
 | Flag | What it does |
 |---|---|
 | `--json` | Print JSON. One name gives an object, several names give a list. |
-| `--offline` | Read the name only and make no network requests. |
+| `--offline` | Make no network requests. A GGUF file on your machine is still read. |
 | `--ollama-url URL` | Where Ollama listens. Defaults to `http://localhost:11434`, or `OLLAMA_HOST` if set. |
 | `--verbose`, `-v` | Add a column with a one-sentence explanation of each row. |
 | `--brief`, `-b` | Print one row per model instead of a table each. |
@@ -142,7 +142,7 @@ Accepted name formats:
 
 - Ollama: `[host/][namespace/]model[:tag]`, for example `qwen3.5:4b` or `hf.co/bartowski/Qwen_Qwen3-30B-A3B-GGUF:Q4_K_M`
 - Hugging Face: `org/repo`, or a pasted `https://huggingface.co/org/repo` link
-- File names: `Llama-3-8B-Instruct.Q4_K_M.gguf`, with or without a folder in front
+- File names: `Llama-3-8B-Instruct.Q4_K_M.gguf`, with or without a folder in front. If the file exists on your machine, its header is read too.
 - Hosted API model IDs: `gpt-4o-2024-08-06` or `claude-3-5-sonnet-20241022`. A name is read this way only when every family in it is offered solely as a hosted service.
 - OpenRouter IDs: `anthropic/claude-3.5-sonnet:free`, recognized by an OpenRouter-only tag such as `free` or `nitro`
 
@@ -232,12 +232,15 @@ Two rules are used. The family right after `Distill` is the one that was trained
 
 ### Where the facts come from
 
-The lookup step tries two sources in order and merges them:
+The lookup step tries these sources and merges them:
 
-1. The local Ollama API (`/api/show` and `/api/tags`), for models you have installed.
-2. The Hugging Face Hub API, for names that contain `org/repo`.
+1. The GGUF file itself, when the name is a path to a file on your machine. Only the header is read, never the weights, so it takes a fraction of a second on a file of any size.
+2. The local Ollama API (`/api/show` and `/api/tags`), for models you have installed.
+3. The Hugging Face Hub API, for names that contain `org/repo`.
 
-Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
+A **Based on** row names the model a repo or file was made from, when its model card or header says so. On Hugging Face it also says how: a compressed copy, a fine-tune, an adapter or a merge.
+
+Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `file`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
 
 Hugging Face answers are saved on disk for a day, so repeated lookups are instant and still work without a network connection. A note under the table says when a saved copy was used. `--no-cache` turns this off, and `WHATMODEL_CACHE_DIR` moves the folder. Ollama answers are never cached. As a library, `explain()` caches only when you pass `cache_dir`.
 
@@ -301,6 +304,29 @@ Then check it:
 uv run pytest
 uv run whatmodel olmo-2:7b --offline
 ```
+
+### Your own tokens
+
+To teach whatmodel names that only you use, such as internal model names, put entries in your own file. It is merged over the built-in dictionary, and where both give a token a meaning, yours wins.
+
+| System | Path |
+|---|---|
+| macOS and Linux | `~/.config/whatmodel/tokens.yaml` |
+| Windows | `%APPDATA%\whatmodel\tokens.yaml` |
+
+`WHATMODEL_TOKENS` points to a different file. The format is the same, and only `schema` and `tokens` are needed:
+
+```yaml
+schema: 1
+tokens:
+  - pattern: acme
+    category: family
+    label: Acme Assistant
+    maker: Acme Corp
+    explanation: Our in-house fine-tunes.
+```
+
+Output that used one of your entries says so under the table, and `whatmodel tokens` marks them. A mistake in the file is reported once and the file is left out, so it never stops a name from being explained.
 
 [CONTRIBUTING.md](https://github.com/ShekharBhardwaj/whatmodel/blob/main/CONTRIBUTING.md) covers patterns, regex entries and the rules entries must follow.
 
