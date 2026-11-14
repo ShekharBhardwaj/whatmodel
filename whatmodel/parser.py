@@ -17,6 +17,7 @@ from functools import cache
 from typing import Any
 
 from whatmodel.dictionary import (
+    AFTER_UNKNOWN,
     Dictionary,
     Piece,
     Reading,
@@ -390,6 +391,10 @@ def _raw_offset(run: Sequence[Piece], cut: int) -> int | None:
     return None
 
 
+#: What comes before a token when nothing known does.
+_NO_CONTEXT = frozenset({AFTER_UNKNOWN})
+
+
 def _tokenize(text: str, part: str, dictionary: Dictionary) -> list[Token]:
     """Split ``text`` into tokens, choosing the reading with the fewest unknown parts.
 
@@ -424,14 +429,14 @@ def _tokenize(text: str, part: str, dictionary: Dictionary) -> list[Token]:
                 spans = (_Span(start, cut, fused.families), _Span(cut, end, fused.versions))
                 options.append((unknown, used + 2, (*spans, *rest)))
 
-        unknown, used, rest = best(index + 1, frozenset())
+        unknown, used, rest = best(index + 1, _NO_CONTEXT)
         piece = pieces[index]
         options.append((unknown + 1, used + 1, (_Span(piece.start, piece.end, ()), *rest)))
         return min(options, key=lambda option: (option[0], option[1]))
 
     tokens: list[Token] = []
     pending: _Span | None = None  # a run of adjacent unknown parts, merged into one token
-    for span in best(0, frozenset())[2]:
+    for span in best(0, _NO_CONTEXT)[2]:
         if not span.readings:
             pending = span if pending is None else _Span(pending.start, span.end, ())
             continue

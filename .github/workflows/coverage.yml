@@ -1,0 +1,70 @@
+name: Coverage report
+
+# Once a week, measure how much of the most popular real model names the token
+# dictionary understands, and keep one issue up to date with the result and
+# the most common unknown tokens.
+#
+# It reads public pages only and changes nothing in the repository. The one
+# thing it writes is the issue.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Measure and report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # to create or update the report issue; nothing else is granted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: Collect popular model names
+        run: uv run python scripts/fetch_names.py > names.txt
+
+      # The report is written to a file and passed as a file. Model names come
+      # from the internet, so they are never placed on a command line.
+      - name: Write the report
+        run: |
+          {
+            uv run python scripts/coverage.py names.txt --markdown --top 40
+            echo
+            echo "_Updated $(date -u +%Y-%m-%d) by the [coverage workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/coverage.yml)._"
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create or update the report issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: Token coverage report
+        run: |
+          set -euo pipefail
+          number="$(gh issue list --state open --label tokens --search "in:title \"$TITLE\"" \
+            --json number,title --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")"
+          if [[ -n "$number" ]]; then
+            gh issue edit "$number" --body-file report.md
+          else
+            gh issue create --title "$TITLE" --label tokens --body-file report.md
+          fi

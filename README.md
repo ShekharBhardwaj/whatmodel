@@ -6,6 +6,8 @@ Explain LLM model names in plain English: give it `gemma4:e2b-it-qat` and it tel
 
 It reads names from Ollama, Hugging Face and GGUF files. There are no LLM calls: every explanation comes from a plain data file and from model metadata.
 
+![whatmodel explaining two model names in a terminal](https://raw.githubusercontent.com/ShekharBhardwaj/whatmodel/main/docs/example.svg)
+
 ## Install
 
 ```bash
@@ -128,6 +130,7 @@ whatmodel -                   read names from standard input, one per line
 whatmodel compare <a> <b>     put names side by side and mark what differs
 whatmodel list                explain every model installed in local Ollama
 whatmodel tokens              print the token dictionary
+whatmodel mcp                 run as an MCP server for AI assistants
 ```
 
 | Flag | What it does |
@@ -137,7 +140,7 @@ whatmodel tokens              print the token dictionary
 | `--ollama-url URL` | Where Ollama listens. Defaults to `http://localhost:11434`, or `OLLAMA_HOST` if set. |
 | `--verbose`, `-v` | Add a column with a one-sentence explanation of each row. |
 | `--brief`, `-b` | Print one row per model instead of a table each. |
-| `--no-cache` | Do not reuse or save Hugging Face answers on disk. |
+| `--no-cache` | Do not reuse or save Hugging Face and OpenRouter answers on disk. |
 | `--version` | Print the version. |
 
 Accepted name formats:
@@ -155,6 +158,30 @@ ollama list | whatmodel - --brief
 ```
 
 A model that happens to be called `list`, `compare` or `tokens` can be explained with `whatmodel explain list`.
+
+### Many names at once
+
+`--brief` prints one row per model, which suits a long list:
+
+```console
+$ whatmodel gemma4:e2b-it-qat llama3.1:8b-instruct-q4_K_M qwen3.5:4b --offline --brief
+
+┌─────────────────────────────┬────────────────────────────────────┬───────────┐
+│ Name                        │ From the name                      │ Looked up │
+├─────────────────────────────┼────────────────────────────────────┼───────────┤
+│ gemma4:e2b-it-qat           │ Gemma 4 (Google); effective 2B     │ -         │
+│                             │ parameters; instruction tuned      │           │
+│                             │ (ready for chat);                  │           │
+│                             │ quantization-aware trained         │           │
+├─────────────────────────────┼────────────────────────────────────┼───────────┤
+│ llama3.1:8b-instruct-q4_K_M │ Llama 3.1 (Meta); 8B parameters;   │ -         │
+│                             │ instruction tuned (ready for       │           │
+│                             │ chat); 4-bit (Q4_K_M, the balanced │           │
+│                             │ variant)                           │           │
+├─────────────────────────────┼────────────────────────────────────┼───────────┤
+│ qwen3.5:4b                  │ Qwen 3.5 (Alibaba); 4B parameters  │ -         │
+└─────────────────────────────┴────────────────────────────────────┴───────────┘
+```
 
 ### Comparing names
 
@@ -239,12 +266,13 @@ The lookup step tries these sources and merges them:
 1. The GGUF file itself, when the name is a path to a file on your machine. Only the header is read, never the weights, so it takes a fraction of a second on a file of any size.
 2. The local Ollama API (`/api/show` and `/api/tags`), for models you have installed.
 3. The Hugging Face Hub API, for names that contain `org/repo`.
+4. OpenRouter's public model list, for OpenRouter IDs and hosted API IDs with a publisher, such as `anthropic/claude-3.5-sonnet`. The whole list is fetched, so the name you typed is never sent.
 
 A **Based on** row names the model a repo or file was made from, when its model card or header says so. On Hugging Face it also says how: a compressed copy, a fine-tune, an adapter or a merge.
 
-Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `file`, `ollama` or `huggingface`, and `lookups` reports what happened with each source.
+Timeouts are short. A source that is offline, slow, or does not know the model is skipped, and the name is still explained. In JSON every item carries a `source` of `name`, `implied`, `file`, `ollama`, `huggingface` or `openrouter`, and `lookups` reports what happened with each source.
 
-Hugging Face answers are saved on disk for a day, so repeated lookups are instant and still work without a network connection. A note under the table says when a saved copy was used. `--no-cache` turns this off, and `WHATMODEL_CACHE_DIR` moves the folder. Ollama answers are never cached. As a library, `explain()` caches only when you pass `cache_dir`.
+Hugging Face and OpenRouter answers are saved on disk for a day, so repeated lookups are instant and still work without a network connection. A note under the table says when a saved copy was used. `--no-cache` turns this off, and `WHATMODEL_CACHE_DIR` moves the folder. Ollama answers are never cached. As a library, `explain()` caches only when you pass `cache_dir`.
 
 A Source of `name (implied)` marks a row that no token states outright but another token settles. `A3B` (3B active parameters) implies a mixture-of-experts design, for example. Run with `-v` to see the reason.
 
@@ -265,13 +293,35 @@ info.to_dict()  # the same data --json prints
 
 `explain(name, offline=True)` makes no requests at all.
 
+## With AI assistants (MCP)
+
+`whatmodel mcp` runs whatmodel as a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI assistant can look up a model name while it works. It offers two tools, `explain_model_name` and `compare_model_names`, and needs nothing extra installed.
+
+For a client configured with JSON, such as Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "whatmodel": { "command": "whatmodel", "args": ["mcp"] }
+  }
+}
+```
+
+For Claude Code:
+
+```bash
+claude mcp add whatmodel -- whatmodel mcp
+```
+
+Each tool takes `lookup: false` to read the name only, with no network use.
+
 ## In the browser
 
 [docs/index.html](https://github.com/ShekharBhardwaj/whatmodel/blob/main/docs/index.html) is a single page that runs the same name reader in the browser, with no server and nothing sent anywhere. Served with GitHub Pages it lives at <https://shekharbhardwaj.github.io/whatmodel/>. It reads names only and makes no lookups.
 
 ## Coverage
 
-Measured on 5,918 popular Ollama and Hugging Face names on 2026-11-12, whatmodel read 80% of names with no unknown token, and knew 95% of all tokens. New model families appear every week, so the rest are reported as unknown until someone adds them. `scripts/coverage.py` repeats the measurement on any list of names.
+Measured on 5,918 popular Ollama and Hugging Face names on 2026-11-12, whatmodel read 81% of names with no unknown token, and knew 96% of all tokens. New model families appear every week, so the rest are reported as unknown until someone adds them. A weekly workflow repeats the measurement on fresh names and keeps an issue titled "Token coverage report" up to date with the most common unknown tokens. `scripts/fetch_names.py` and `scripts/coverage.py` run the same thing by hand.
 
 ## What the name cannot tell you
 

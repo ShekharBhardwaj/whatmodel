@@ -27,7 +27,10 @@
 #   value        optional  Normalized value for JSON and the library. Defaults
 #                          to the literal as written here, or to the matched
 #                          token for a regex.
-#   after        optional  Only match directly after a token of this category.
+#   after        optional  Only match directly after a token of this category,
+#                          or of any category in a list. The word "unknown"
+#                          in the list means: after a token the dictionary
+#                          does not know, or at the start of the name.
 #   maker        optional  Family entries only: who makes the family.
 #   implies      optional  Facts in other categories that this token settles, as
 #                          "category: token". The token must be an entry of that
@@ -876,10 +879,12 @@ tokens:
     explanation: 'Moonshot AI''s models built on its Kimi Linear attention design, made for speed on long inputs.'
 
   # ------------------------------------------------------------- version ----
+  # A bare number is a version right after the family, and also after a tier
+  # or tuning word that sits between them: devstral-small-2, claude-opus-4.
   - pattern: '\d{1,2}(?:\.\d{1,2}){0,2}'
     regex: true
     category: version
-    after: family
+    after: [family, tier, tuning]
     label: '{text}'
     explanation: Release {text} of this family, where a higher number is newer.
     examples: ['3', '3.5', '0.1']
@@ -887,11 +892,21 @@ tokens:
   - pattern: '(?P<major>\d{1,2})_(?P<minor>\d)'
     regex: true
     category: version
-    after: family
+    after: [family, tier, tuning]
     value: '{major}.{minor}'
     label: '{major}.{minor}'
     explanation: Release {major}.{minor} of this family, written with a dash instead of a dot.
     examples: ['3-5', '4-1']
+
+  # After a size only a number with a decimal point counts, as in 8b-2.6. A
+  # whole number there could be anything, so it stays unknown.
+  - pattern: '\d{1,2}\.\d{1,2}'
+    regex: true
+    category: version
+    after: size
+    label: '{text}'
+    explanation: Release {text} of this family, where a higher number is newer.
+    examples: ['2.6', '1.0']
 
   - pattern: 'v(?P<n>\d{1,2}(?:\.\d{1,2}){0,2})'
     regex: true
@@ -1091,6 +1106,8 @@ tokens:
   # "base" is also a tuning token, so it is reported as ambiguous.
   - pattern: base
     category: tier
+    # Right after the family or its version, "base" names a size: bert-base, whisper-base.
+    after: [family, version, unknown]
     label: base size (the standard size in its lineup)
     explanation: The standard size in a lineup that also has smaller and larger versions.
 
@@ -1106,8 +1123,18 @@ tokens:
 
   - pattern: opus
     category: tier
-    label: opus tier (the most capable option)
-    explanation: Anthropic's name for its largest and most capable model in a generation.
+    label: opus tier (large and highly capable)
+    explanation: Anthropic's name for a large, highly capable model in a generation.
+
+  - pattern: fable
+    category: tier
+    label: fable tier (above opus)
+    explanation: Anthropic's name for a model tier that sits above Opus.
+
+  - pattern: mythos
+    category: tier
+    label: mythos tier (above opus)
+    explanation: Anthropic's name for a model tier that sits above Opus.
 
   - pattern: scout
     category: tier
@@ -1153,6 +1180,8 @@ tokens:
   # "base" is also a tier token, so it is reported as ambiguous.
   - pattern: base
     category: tuning
+    # Once a size or another variant word has been given, "base" means the untuned model.
+    after: [size, effective_size, active_params, tier, tuning, unknown]
     label: base model (not tuned for chat)
     explanation: The raw pretrained model, which continues text but was not taught to follow instructions or chat.
 
@@ -1601,6 +1630,14 @@ tokens:
     label: 'dated {y}-{m}-{d}'
     explanation: A date stamp, so this snapshot is from {y}-{m}-{d}.
     examples: ['2024-08-06']
+
+  - pattern: '(?P<mm>0[1-9]|1[0-2])_(?P<y>20[2-3]\d)'
+    regex: true
+    category: build
+    value: '{y}-{mm}'
+    label: 'released {y}-{mm}'
+    explanation: A date stamp read as month then year, so this snapshot is from month {mm} of {y}.
+    examples: ['05-2026']
 
   - pattern: alpha
     category: build

@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A "Based on" row names the model a Hugging Face repo or GGUF file was made from, and how.
 - A personal token file (`~/.config/whatmodel/tokens.yaml`) adds your own tokens on top of the built-in ones.
 - About 45 more tokens, each checked against the publisher's own page: families such as Ornith, MiMo, Flint, Clef, Laguna and Bonsai; `mtp`, `dspark` and `dflash`; the Nemotron tiers; `gsq-rco` and `ternary`.
+- `whatmodel mcp` runs as a Model Context Protocol server with two tools, for AI assistants. It supports both the 2026-07-28 protocol and the older handshake, and adds no dependency.
+- OpenRouter IDs and hosted API IDs with a publisher are looked up in OpenRouter's public model list: context length, vision, tools and thinking.
+- A version number is read when it follows a tier or tuning word (`devstral-small-2`, `claude-opus-4-5`), or a size when it has a decimal point (`8b-2.6`).
+- `base` is read as a size right after the family and as "base model" after a size or variant word. With no context it still shows both readings.
+- A weekly workflow measures coverage on fresh names and keeps a report issue up to date.
+- Month-year date stamps (`05-2026`), the Fable and Mythos tiers, and `after` lists in the dictionary.
 - `scripts/coverage.py` measures how much of a list of real names the dictionary understands and lists the most common unknown tokens.
 
 ### Fixed
@@ -33,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README links work on PyPI.
 
 ### Changed
+
+- A context length of a million tokens or more reads as `1M tokens`, not `1000k tokens`.
+- The Opus tier is no longer described as "the most capable option", since tiers now sit above it.
 
 - Rows that a token implies rather than states now show a Source of `name (implied)`, and `implied` in JSON (was `name`).
 

@@ -4,6 +4,7 @@ whatmodel <name> [<name>...]   explain one or more names
 whatmodel compare <a> <b>      put names side by side and mark what differs
 whatmodel list                 explain every model installed in local Ollama
 whatmodel tokens               print the token dictionary
+whatmodel mcp                  run as an MCP server for AI assistants
 """
 
 from __future__ import annotations
@@ -281,6 +282,22 @@ def list_command(
         return
     infos, errors = _explain_all(names, offline=offline, ollama_url=ollama_url, no_cache=no_cache)
     _report(infos, errors, as_json=as_json, as_list=True, verbose=verbose, brief=brief)
+
+
+@app.command("mcp")
+def mcp_command(
+    ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
+    no_cache: NoCacheOption = False,
+) -> None:
+    """Run as a Model Context Protocol server, so AI assistants can call whatmodel.
+
+    It talks over standard input and output and is meant to be started by an
+    MCP client, not by hand.
+    """
+    from whatmodel.mcp import Server, serve
+
+    cache_dir = None if no_cache else default_cache_dir()
+    serve(Server(ollama_url=_ollama_url(ollama_url), cache_dir=cache_dir))
 
 
 @app.command("tokens")

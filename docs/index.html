@@ -60,6 +60,11 @@
   td .why { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
   tr.flag td.field, tr.flag td.value { color: var(--warn); }
   tr.implied td { background: var(--mark); }
+  @media (max-width: 520px) {
+    th, td { padding: 8px 10px; }
+    td.source { white-space: normal; }
+    table { font-size: 14px; }
+  }
   ul.notes { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
   ul.notes a { color: var(--accent); }
   label.toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; color: var(--muted); font-size: 14px; cursor: pointer; }

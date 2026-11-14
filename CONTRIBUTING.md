@@ -46,6 +46,8 @@ Label the pull request `tokens` so it lands under "New tokens" in the release no
 uv run python scripts/coverage.py names.txt --top 50
 ```
 
+`scripts/fetch_names.py` collects a fresh list of popular names to feed it. A workflow runs both every Monday and updates the issue titled "Token coverage report", which is the best place to find a first token to add.
+
 Only add a token when you know what it means. A token left as unknown is correct; a guessed meaning is a bug.
 
 ## Entry fields
@@ -59,7 +61,7 @@ Only add a token when you know what it means. A token left as unknown is correct
 | `regex` | no | `true` when `pattern` is a regular expression. |
 | `examples` | for regex entries | Tokens the pattern must match. The tests check them, and `whatmodel tokens` prints them instead of the raw regex. |
 | `value` | no | The normalized value for JSON and the library, such as `4B` for `4b`. Defaults to the literal as written, or to the matched token for a regex. |
-| `after` | no | Match only directly after a token of the named category. |
+| `after` | no | Match only directly after a token of the named category, or of any category in a list. `unknown` in the list means after a token the dictionary does not know, or at the start. |
 | `maker` | no | Family entries only: who makes the family. Shown as `Gemma 4 (Google)`. |
 | `implies` | no | A fact in another category that this token settles, such as `{architecture: moe}`. |
 

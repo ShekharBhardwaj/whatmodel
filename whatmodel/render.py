@@ -19,6 +19,7 @@ from whatmodel.lookup import (
     SOURCE_FILE,
     SOURCE_HUGGINGFACE,
     SOURCE_OLLAMA,
+    SOURCE_OPENROUTER,
     STATUS_ERROR,
     STATUS_NOT_FOUND,
     STATUS_OK,
@@ -72,6 +73,7 @@ _SOURCE_NAMES = {
     SOURCE_OLLAMA: "local Ollama",
     SOURCE_HUGGINGFACE: "Hugging Face",
     SOURCE_FILE: "the file",
+    SOURCE_OPENROUTER: "OpenRouter",
     SOURCE_IMPLIED: "name (implied)",
 }
 
@@ -91,6 +93,10 @@ _MISS_REASONS = {
     (SOURCE_HUGGINGFACE, STATUS_TIMEOUT): "Hugging Face did not answer in time",
     (SOURCE_HUGGINGFACE, STATUS_ERROR): "Hugging Face returned an error",
     (SOURCE_FILE, STATUS_ERROR): "the file could not be read as GGUF",
+    (SOURCE_OPENROUTER, STATUS_NOT_FOUND): "not in OpenRouter's model list",
+    (SOURCE_OPENROUTER, STATUS_UNREACHABLE): "OpenRouter could not be reached",
+    (SOURCE_OPENROUTER, STATUS_TIMEOUT): "OpenRouter did not answer in time",
+    (SOURCE_OPENROUTER, STATUS_ERROR): "OpenRouter returned an error",
 }
 
 

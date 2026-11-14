@@ -20,6 +20,9 @@ from typing import Any
 import yaml
 
 SCHEMA_VERSION = 1
+#: In an ``after`` list: directly after a token the dictionary does not know,
+#: or at the very start of a name part, where there is no context to go on.
+AFTER_UNKNOWN = "unknown"
 
 #: Categories the parser refers to by id. ``tokens.yaml`` may define more.
 CORE_CATEGORIES = ("host", "org", "family", "version", "format")
@@ -159,7 +162,8 @@ class Entry:
     explanation: str
     value: str | None = None
     examples: tuple[str, ...] = ()
-    after: str | None = None
+    #: Categories this entry may directly follow; ``None`` means anywhere.
+    after: tuple[str, ...] | None = None
     maker: str | None = None
     implies: tuple[tuple[str, str], ...] = ()
     #: True for an entry from the user's own token file. It wins over built-in ones.
@@ -257,7 +261,11 @@ class Dictionary:
         for entry in (*self._literal_index.get(candidate, ()), *self._regex_entries):
             if category is not None and entry.category != category:
                 continue
-            if not ignore_context and entry.after is not None and entry.after not in prev:
+            if (
+                not ignore_context
+                and entry.after is not None
+                and not prev.intersection(entry.after)
+            ):
                 continue
             groups = entry.groups(candidate)
             if groups is not None:
@@ -433,9 +441,10 @@ def _build_entry(
     is_regex = raw.get("regex", False)
     if not isinstance(is_regex, bool):
         raise _fail(where, "'regex' must be true or false")
-    after = _optional_str(where, raw, "after")
-    if after is not None and after not in categories:
-        raise _fail(where, f"'after' names unknown category '{after}'")
+    after = _str_list(where, raw["after"], "after") if "after" in raw else None
+    for name in after or ():
+        if name not in categories and name != AFTER_UNKNOWN:
+            raise _fail(where, f"'after' names unknown category '{name}'")
     maker = _optional_str(where, raw, "maker")
     if maker is not None and category != "family":
         raise _fail(where, "'maker' is only allowed on family entries")

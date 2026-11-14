@@ -18,6 +18,7 @@ from whatmodel.lookup import (
     huggingface_facts,
     list_installed,
     ollama_facts,
+    openrouter_facts,
 )
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -422,7 +423,16 @@ def test_format_count(count: float, text: str) -> None:
 
 @pytest.mark.parametrize(
     ("tokens", "text"),
-    [(131072, "128k tokens"), (8192, "8k tokens"), (200000, "200k tokens"), (512, "512 tokens")],
+    [
+        (131072, "128k tokens"),
+        (8192, "8k tokens"),
+        (200000, "200k tokens"),
+        (512, "512 tokens"),
+        (1000000, "1M tokens"),
+        (1048576, "1M tokens"),
+        (2000000, "2M tokens"),
+        (1500000, "1500k tokens"),
+    ],
 )
 def test_format_context(tokens: int, text: str) -> None:
     assert format_context(tokens) == text
@@ -464,3 +474,88 @@ def test_several_base_models() -> None:
 def test_no_base_model_means_no_row() -> None:
     assert huggingface_facts({"cardData": {"license": "mit"}})[0].key == "license"
     assert all(fact.key != "base_model" for fact in huggingface_facts({"tags": ["gguf"]}))
+
+
+# -------------------------------------------------------------- openrouter ----
+
+ROUTER_LIST = {
+    "data": [
+        {
+            "id": "anthropic/claude-3.5-sonnet",
+            "context_length": 200000,
+            "architecture": {"input_modalities": ["text", "image"]},
+            "supported_parameters": ["max_tokens", "tools"],
+        },
+        {"id": "meta-llama/llama-3.3-70b-instruct:free", "context_length": 65536},
+    ]
+}
+
+
+def router(body: Any = ROUTER_LIST, status: int = 200) -> Recorder:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "openrouter.ai":
+            return httpx.Response(status, json=body)
+        return httpx.Response(404, json={})
+
+    return Recorder(handler)
+
+
+def test_openrouter_facts() -> None:
+    facts = {fact.key: fact for fact in openrouter_facts(ROUTER_LIST["data"][0])}
+    assert {fact.source for fact in facts.values()} == {"openrouter"}
+    assert facts["context_length"].label == "200k tokens"
+    assert (facts["vision"].value, facts["tools"].value, facts["thinking"].value) == (
+        True,
+        True,
+        False,
+    )
+
+
+def test_openrouter_claims_nothing_it_was_not_told() -> None:
+    assert [fact.key for fact in openrouter_facts({"id": "x/y", "context_length": 4096})] == [
+        "context_length"
+    ]
+    assert openrouter_facts({"id": "x/y"}) == []
+
+
+def test_openrouter_name_is_looked_up_in_the_list() -> None:
+    recorder = router()
+    info = explain("anthropic/claude-3.5-sonnet:free", client=recorder.client())
+    assert info.lookups["openrouter"] == "ok"
+    assert facts_of(info)["context_length"] == (200000, "openrouter")
+    # The variant is not listed on its own, so the plain ID answered. The name
+    # itself is never sent: only the whole list is fetched.
+    assert recorder.urls == ["https://openrouter.ai/api/v1/models"]
+
+
+def test_listed_variant_wins_over_the_plain_id() -> None:
+    info = explain("meta-llama/llama-3.3-70b-instruct:free", client=router().client())
+    assert facts_of(info) == {"context_length": (65536, "openrouter")}
+
+
+def test_hosted_api_id_with_a_publisher_is_looked_up_too() -> None:
+    info = explain("anthropic/claude-3.5-sonnet", client=router().client())
+    assert info.parsed.kinds == ("api",)
+    assert info.lookups["openrouter"] == "ok"
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "status", "expected"),
+    [
+        ("nobody/nothing:free", ROUTER_LIST, 200, "not_found"),
+        ("anthropic/claude-3.5-sonnet:free", {"data": "broken"}, 200, "not_found"),
+        ("anthropic/claude-3.5-sonnet:free", {}, 500, "error"),
+    ],
+)
+def test_openrouter_misses_are_statuses(name: str, body: Any, status: int, expected: str) -> None:
+    info = explain(name, client=router(body, status).client())
+    assert info.lookups["openrouter"] == expected
+    assert info.facts == ()
+
+
+def test_other_names_never_ask_openrouter() -> None:
+    recorder = router()
+    for name in ("qwen3.5:4b", "bartowski/Qwen_Qwen3-30B-A3B-GGUF", "gpt-4o-2024-08-06"):
+        info = explain(name, client=recorder.client())
+        assert "openrouter" not in info.lookups
+    assert all("openrouter.ai" not in url for url in recorder.urls)

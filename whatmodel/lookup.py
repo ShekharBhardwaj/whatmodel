@@ -24,9 +24,11 @@ from whatmodel import cache, gguf
 from whatmodel.dictionary import get_dictionary
 from whatmodel.parser import (
     HUGGINGFACE_HOSTS,
+    KIND_API,
     KIND_FILE,
     KIND_HUGGINGFACE,
     KIND_OLLAMA,
+    KIND_OPENROUTER,
     ParsedName,
     parse,
 )
@@ -40,9 +42,14 @@ HUGGINGFACE_URL = "https://huggingface.co"
 #: Seconds. Ollama is local, so it gets less patience than the Hub.
 OLLAMA_TIMEOUT = 2.0
 HUGGINGFACE_TIMEOUT = 5.0
+#: OpenRouter's public list of every model it serves. It needs no key.
+OPENROUTER_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_TIMEOUT = 5.0
+_OPENROUTER_CACHE_KEY = "openrouter/models"
 
 SOURCE_OLLAMA = "ollama"
 SOURCE_HUGGINGFACE = "huggingface"
+SOURCE_OPENROUTER = "openrouter"
 #: A GGUF file on this machine, read directly.
 SOURCE_FILE = "file"
 
@@ -123,7 +130,10 @@ def format_count(count: float) -> str:
 
 
 def format_context(tokens: int) -> str:
-    """Format a context length: 131072 -> 128k tokens, 200000 -> 200k tokens."""
+    """Format a context length: 131072 -> 128k tokens, 1000000 -> 1M tokens."""
+    for unit in (1024 * 1024, 1_000_000):
+        if tokens >= unit and tokens % unit == 0:
+            return f"{tokens // unit}M tokens"
     if tokens >= 1024 and tokens % 1024 == 0:
         return f"{tokens // 1024}k tokens"
     if tokens >= 1000:
@@ -586,6 +596,69 @@ def _lookup_huggingface(
     return STATUS_OK, huggingface_facts(body, parsed.quantization), False
 
 
+# -------------------------------------------------------------- openrouter ----
+
+
+def _openrouter_id(parsed: ParsedName) -> str | None:
+    """The OpenRouter model ID this name could be, or ``None`` if it is not one."""
+    if parsed.namespace is None:
+        return None
+    base = f"{parsed.namespace}/{parsed.model}".lower()
+    if parsed.kinds == (KIND_OPENROUTER,):
+        return f"{base}:{parsed.tag.lower()}" if parsed.tag else base
+    if parsed.kinds == (KIND_API,):
+        return base
+    return None
+
+
+def openrouter_facts(entry: Mapping[str, Any]) -> list[Fact]:
+    """Turn one entry of OpenRouter's model list into facts."""
+    source = SOURCE_OPENROUTER
+    facts: list[Fact] = []
+    context = _positive_int(entry.get("context_length"))
+    if context is not None:
+        facts.append(Fact("context_length", context, format_context(context), source))
+    architecture = entry.get("architecture")
+    inputs = architecture.get("input_modalities") if isinstance(architecture, dict) else None
+    if isinstance(inputs, list) and inputs:
+        flag = "image" in inputs
+        facts.append(Fact("vision", flag, _yes_no(flag), source))
+    supported = entry.get("supported_parameters")
+    if isinstance(supported, list) and supported:
+        for key, parameter in (("tools", "tools"), ("thinking", "reasoning")):
+            flag = parameter in supported
+            facts.append(Fact(key, flag, _yes_no(flag), source))
+    return facts
+
+
+def _lookup_openrouter(
+    parsed: ParsedName, client: httpx.Client, timeout: float, cache_dir: Path | None = None
+) -> tuple[str, list[Fact], bool]:
+    """Find the name in OpenRouter's model list. The name itself is never sent."""
+    wanted = _openrouter_id(parsed)
+    if wanted is None:
+        return STATUS_NOT_APPLICABLE, [], False
+    body = cache.read(cache_dir, _OPENROUTER_CACHE_KEY) if cache_dir is not None else None
+    cached = body is not None
+    if body is None:
+        status, body = _request(client, "GET", OPENROUTER_URL, timeout=timeout)
+        if status != STATUS_OK:
+            return status, [], False
+        if cache_dir is not None:
+            cache.write(cache_dir, _OPENROUTER_CACHE_KEY, body)
+    models = body.get("data")
+    listed = {
+        item["id"].lower(): item
+        for item in (models if isinstance(models, list) else [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    # A variant such as ":free" is often not listed on its own; the plain ID then answers.
+    entry = listed.get(wanted) or listed.get(wanted.split(":", 1)[0])
+    if entry is None:
+        return STATUS_NOT_FOUND, [], False
+    return STATUS_OK, openrouter_facts(entry), cached
+
+
 # ------------------------------------------------------------------- merge ----
 
 
@@ -626,7 +699,8 @@ def explain(
 
     wants_ollama = _ollama_name(parsed) is not None
     wants_hub = _huggingface_repo(parsed) is not None
-    if not (wants_ollama or wants_hub):
+    wants_router = _openrouter_id(parsed) is not None
+    if not (wants_ollama or wants_hub or wants_router):
         nothing = {SOURCE_OLLAMA: STATUS_NOT_APPLICABLE, SOURCE_HUGGINGFACE: STATUS_NOT_APPLICABLE}
         return ModelInfo(parsed, tuple(from_file), {**nothing, **on_disk})
 
@@ -639,9 +713,20 @@ def explain(
         hub_status, from_hub, hub_cached = _lookup_huggingface(
             parsed, active, HUGGINGFACE_TIMEOUT if timeout is None else timeout, cache_dir
         )
+        router_status, from_router, router_cached = _lookup_openrouter(
+            parsed, active, OPENROUTER_TIMEOUT if timeout is None else timeout, cache_dir
+        )
     finally:
         if owned:
             active.close()
-    lookups = {SOURCE_OLLAMA: ollama_status, SOURCE_HUGGINGFACE: hub_status}
-    cached = (SOURCE_HUGGINGFACE,) if hub_cached else ()
-    return ModelInfo(parsed, _merge([from_ollama, from_hub]), lookups, cached)
+    lookups = {SOURCE_OLLAMA: ollama_status, SOURCE_HUGGINGFACE: hub_status, **on_disk}
+    if router_status != STATUS_NOT_APPLICABLE:
+        lookups[SOURCE_OPENROUTER] = router_status
+    cached = tuple(
+        source
+        for source, used in ((SOURCE_HUGGINGFACE, hub_cached), (SOURCE_OPENROUTER, router_cached))
+        if used
+    )
+    return ModelInfo(
+        parsed, _merge([from_file, from_ollama, from_hub, from_router]), lookups, cached
+    )

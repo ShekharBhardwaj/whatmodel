@@ -460,3 +460,31 @@ def test_the_personal_file_is_picked_up_from_the_environment(
         assert personal_tokens_path() == tmp_path / "tokens.yaml"
     finally:
         get_dictionary.cache_clear()
+
+
+# ------------------------------------------------------------- after lists ----
+
+
+def test_after_may_list_several_categories() -> None:
+    data = _minimal()
+    data["tokens"].append(
+        {
+            "pattern": "zz",
+            "category": "host",
+            "label": "l",
+            "explanation": "e",
+            "after": ["host", "unknown"],
+        }
+    )
+    dictionary = build_dictionary(data)
+    assert dictionary.match("zz", frozenset({"unknown"}))
+    assert dictionary.match("zz", frozenset({"host"}))
+    assert dictionary.match("zz", frozenset({"other"})) == ()
+    assert dictionary.match("zz", frozenset({"other"}), ignore_context=True)
+
+
+def test_after_rejects_an_unknown_category() -> None:
+    data = _minimal()
+    data["tokens"][0]["after"] = ["host", "nonsense"]
+    with pytest.raises(DictionaryError, match="'after' names unknown category 'nonsense'"):
+        build_dictionary(data)

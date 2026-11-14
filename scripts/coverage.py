@@ -66,16 +66,56 @@ def percent(part: int, whole: int) -> str:
     return f"{100 * part / whole:.1f}%" if whole else "n/a"
 
 
+def _code(text: object) -> str:
+    """Wrap text from the internet in a code span, so it cannot mention or link anyone."""
+    return "`" + str(text).replace("`", "'").replace("|", "/") + "`"
+
+
+def markdown(result: dict[str, object], top: int) -> str:
+    names, tokens = int(str(result["names"])), int(str(result["tokens"]))
+    clean, known = int(str(result["names_fully_read"])), int(str(result["tokens_known"]))
+    unknown = result["unknown"]
+    assert isinstance(unknown, list)
+    lines = [
+        f"Measured on {names} popular Ollama and Hugging Face names.",
+        "",
+        "| | Count | Share |",
+        "|---|---|---|",
+        f"| Names read with no unknown token | {clean} | {percent(clean, names)} |",
+        f"| Tokens known | {known} of {tokens} | {percent(known, tokens)} |",
+        f"| Names with no family found | {result['names_without_family']} | "
+        f"{percent(int(str(result['names_without_family'])), names)} |",
+        "",
+        f"## Most common unknown tokens ({len(unknown)} distinct)",
+        "",
+        "Add an entry to `whatmodel/tokens.yaml` only for a token whose meaning you can "
+        "confirm from the publisher's own page. An unknown token is correct; a guessed "
+        "meaning is a bug.",
+        "",
+        "| Count | Token | Seen in |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| {item['count']} | {_code(item['token'])} | {_code(item['example'])} |"
+        for item in unknown[:top]
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("names", help="file with one model name per line, or - for stdin")
     parser.add_argument("--top", type=int, default=30, help="how many unknown tokens to list")
     parser.add_argument("--json", action="store_true", help="print the full result as JSON")
+    parser.add_argument("--markdown", action="store_true", help="print a report in Markdown")
     args = parser.parse_args()
 
     result = measure(read_names(args.names))
     if args.json:
         print(json.dumps(result, indent=2))
+        return
+    if args.markdown:
+        print(markdown(result, args.top))
         return
     names, tokens = int(str(result["names"])), int(str(result["tokens"]))
     print(f"names               {names}")

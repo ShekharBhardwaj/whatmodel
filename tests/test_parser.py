@@ -505,3 +505,64 @@ def test_openrouter_variant_is_read() -> None:
     assert parsed.org == "anthropic"
     assert parsed.hosting == "cloud"
     assert parsed.unknown == ()
+
+
+# ------------------------------------------- versions away from the family ----
+
+
+@pytest.mark.parametrize(
+    ("name", "version"),
+    [
+        ("devstral-small-2", "2"),  # after a tier
+        ("mistral-medium-3.5", "3.5"),
+        ("claude-opus-4-5-20251101", "4.5"),
+        ("north-mini-code-1.0", "1.0"),  # after a tuning word
+        ("minicpm-v:8b-2.6-q2_K", "2.6"),  # after a size, with a decimal point
+        ("minimax-m3.1-flash", "m3.1"),
+        ("unsloth/GLM-4.6V-Flash-GGUF", "4.6v"),
+    ],
+)
+def test_version_away_from_the_family(name: str, version: str) -> None:
+    parsed = parse(name)
+    assert parsed.version == version
+    assert parsed.unknown == ()
+
+
+def test_whole_number_after_a_size_is_not_called_a_version() -> None:
+    parsed = parse("defog/sqlcoder-7b-2")
+    assert parsed.version is None
+    assert parsed.unknown == ("2",)
+
+
+def test_month_year_stamp() -> None:
+    parsed = parse("CohereLabs/command-a-plus-05-2026")
+    assert parsed.build == "2026-05"
+    assert parsed.version is None
+
+
+# -------------------------------------------------------------------- base ----
+
+
+@pytest.mark.parametrize(
+    ("name", "tier", "tuning"),
+    [
+        ("qwen2.5:0.5b-base-q2_K", None, "base"),  # a size is already given
+        ("Qwen/Qwen3-30B-A3B-Base", None, "base"),
+        ("deepseek-coder-v2:16b-lite-base", "lite", "base"),
+        ("microsoft/Florence-2-base", "base", None),  # right after the family and version
+        ("whisper-base", "base", None),
+    ],
+)
+def test_base_is_settled_by_what_comes_before_it(
+    name: str, tier: str | None, tuning: str | None
+) -> None:
+    parsed = parse(name)
+    assert ("base" in parsed.values("tuning")) == (tuning == "base")
+    assert ("base" in parsed.values("tier")) == (tier == "base")
+    assert parsed.ambiguous == ()
+
+
+def test_base_with_no_context_still_shows_both_readings() -> None:
+    for name in ("xlnet/xlnet-base-cased", "deepseek-coder:base"):
+        (token,) = parse(name).ambiguous
+        assert {reading.category for reading in token.readings} == {"tier", "tuning"}
