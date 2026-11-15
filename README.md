@@ -128,6 +128,7 @@ whatmodel <name>              explain one name
 whatmodel <name> <name>...    explain several
 whatmodel -                   read names from standard input, one per line
 whatmodel compare <a> <b>     put names side by side and mark what differs
+whatmodel check <name>        exit with an error if part of a name is not recognized
 whatmodel list                explain every model installed in local Ollama
 whatmodel tokens              print the token dictionary
 whatmodel mcp                 run as an MCP server for AI assistants
@@ -157,7 +158,7 @@ Piping works with `ollama list`, because only the first column of each line is r
 ollama list | whatmodel - --brief
 ```
 
-A model that happens to be called `list`, `compare` or `tokens` can be explained with `whatmodel explain list`.
+A model that happens to be called `list`, `compare`, `check` or `tokens` can be explained with `whatmodel explain list`.
 
 ### Many names at once
 
@@ -266,7 +267,9 @@ The lookup step tries these sources and merges them:
 1. The GGUF file itself, when the name is a path to a file on your machine. Only the header is read, never the weights, so it takes a fraction of a second on a file of any size.
 2. The local Ollama API (`/api/show` and `/api/tags`), for models you have installed.
 3. The Hugging Face Hub API, for names that contain `org/repo`.
-4. OpenRouter's public model list, for OpenRouter IDs and hosted API IDs with a publisher, such as `anthropic/claude-3.5-sonnet`. The whole list is fetched, so the name you typed is never sent.
+4. OpenRouter's public model list, for OpenRouter IDs and hosted API IDs, such as `anthropic/claude-sonnet-5.5`, `claude-sonnet-5-5` or `gpt-4o`. The whole list is fetched, so the name you typed is never sent.
+
+A hosted API ID is often spelled differently on OpenRouter: `claude-sonnet-5-5` is listed as `anthropic/claude-sonnet-5.5`. A name with no publisher is matched only when exactly one listed model has that name, and a **Listed as** row shows which model answered. These rows describe the model as OpenRouter serves it, which can differ from the maker's own API.
 
 A **Based on** row names the model a repo or file was made from, when its model card or header says so. On Hugging Face it also says how: a compressed copy, a fine-tune, an adapter or a merge.
 
@@ -313,6 +316,16 @@ whatmodel.meanings("zzz")  # () for a token it does not know
 
 parsed.family_roles  # {'qwen': 'model', 'claude': 'source'} when a name has two families
 ```
+
+To stop a script before it runs with a mistyped model name:
+
+```python
+whatmodel.check("claude-sonnet-5-5")  # returns the parsed name
+whatmodel.check("claude-sonet-5-5")
+# whatmodel.UnrecognizedName: Check the model name 'claude-sonet-5-5': 'sonet-5-5' not recognized.
+```
+
+`check()` reads the name only and makes no request. Passing means no part of the name is unknown; it does not prove the model exists. `UnrecognizedName` is a `ValueError`, and its `unknown` holds the parts that were not recognized. From a shell, `whatmodel check "$MODEL" || exit 1` does the same.
 
 `import whatmodel` is light: the HTTP and table libraries load only when a lookup or a table needs them.
 

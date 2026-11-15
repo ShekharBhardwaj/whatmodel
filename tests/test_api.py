@@ -168,3 +168,23 @@ def test_explain_many_keeps_order_and_shares_one_client() -> None:
 def test_explain_many_offline_makes_no_client() -> None:
     infos = whatmodel.explain_many(["gemma4:12b", "llama3:8b"], offline=True)
     assert [info.family for info in infos] == ["gemma", "llama"]
+
+
+def test_check_returns_the_parsed_name() -> None:
+    assert whatmodel.check("claude-sonnet-5-5").family == "claude"
+
+
+def test_check_raises_on_an_unknown_part() -> None:
+    with pytest.raises(whatmodel.UnrecognizedName) as caught:
+        whatmodel.check("claude-sonet-5-5")
+    assert caught.value.unknown == ("sonet-5-5",)
+    assert str(caught.value) == (
+        "Check the model name 'claude-sonet-5-5': 'sonet-5-5' not recognized."
+    )
+    assert isinstance(caught.value, ValueError)
+
+
+def test_check_raises_when_no_family_is_found() -> None:
+    with pytest.raises(whatmodel.UnrecognizedName, match="no model family found") as caught:
+        whatmodel.check("8b")
+    assert caught.value.unknown == ()

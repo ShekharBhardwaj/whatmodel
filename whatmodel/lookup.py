@@ -747,7 +747,13 @@ def _lookup_huggingface(
 
 
 def _openrouter_id(parsed: ParsedName) -> str | None:
-    """The OpenRouter model ID this name could be, or ``None`` if it is not one."""
+    """The OpenRouter model ID this name could be, or ``None`` if it is not one.
+
+    A hosted API ID with no publisher, such as ``gpt-4o``, comes back without a
+    slash: OpenRouter's list is then searched for the one model with that name.
+    """
+    if parsed.kinds == (KIND_API,) and parsed.namespace is None:
+        return parsed.model.lower()
     if parsed.namespace is None:
         return None
     base = f"{parsed.namespace}/{parsed.model}".lower()
@@ -758,10 +764,54 @@ def _openrouter_id(parsed: ParsedName) -> str | None:
     return None
 
 
-def openrouter_facts(entry: Mapping[str, Any]) -> list[Fact]:
-    """Turn one entry of OpenRouter's model list into facts."""
+def _spelling(model_id: str) -> str:
+    """Fold the two ways a version is written: ``5-5`` in one place is ``5.5`` in another."""
+    return model_id.replace(".", "-")
+
+
+def _find_listed(listed: Mapping[str, Any], wanted: str) -> Any:
+    """The one listed model ``wanted`` names, or ``None``. Never picks between several."""
+    plain = wanted.split(":", 1)[0]
+    # A variant such as ":free" is often not listed on its own; the plain ID then answers.
+    exact = listed.get(wanted) or listed.get(plain)
+    if exact is not None:
+        return exact
+    key = _spelling(plain)
+    if "/" in plain:
+        matches = [model_id for model_id in listed if _spelling(model_id) == key]
+    else:
+        # No publisher in the name: match on the part after the slash. Aliases
+        # ("~org/name") and variants ("org/name:free") are not models of their own.
+        matches = [
+            model_id
+            for model_id in listed
+            if not model_id.startswith("~")
+            and ":" not in model_id
+            and _spelling(model_id.partition("/")[2]) == key
+        ]
+    return listed[matches[0]] if len(matches) == 1 else None
+
+
+def openrouter_facts(entry: Mapping[str, Any], wanted: str | None = None) -> list[Fact]:
+    """Turn one entry of OpenRouter's model list into facts.
+
+    ``wanted`` is the ID that was searched for. When the entry is listed under
+    a different ID, a fact says which, so the reader can see what answered.
+    """
     source = SOURCE_OPENROUTER
     facts: list[Fact] = []
+    listed_as = entry.get("id")
+    if wanted is not None and isinstance(listed_as, str) and listed_as.lower() != wanted:
+        facts.append(
+            Fact(
+                "openrouter_id",
+                listed_as,
+                listed_as,
+                source,
+                "The name is not an OpenRouter ID as written. "
+                "This is the listed model the OpenRouter rows describe.",
+            )
+        )
     context = _positive_int(entry.get("context_length"))
     if context is not None:
         facts.append(Fact("context_length", context, format_context(context), source))
@@ -799,11 +849,10 @@ def _lookup_openrouter(
         for item in (models if isinstance(models, list) else [])
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
-    # A variant such as ":free" is often not listed on its own; the plain ID then answers.
-    entry = listed.get(wanted) or listed.get(wanted.split(":", 1)[0])
+    entry = _find_listed(listed, wanted)
     if entry is None:
         return STATUS_NOT_FOUND, [], False
-    return STATUS_OK, openrouter_facts(entry), cached
+    return STATUS_OK, openrouter_facts(entry, wanted), cached
 
 
 # ------------------------------------------------------------------- merge ----

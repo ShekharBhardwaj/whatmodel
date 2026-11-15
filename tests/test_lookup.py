@@ -553,9 +553,63 @@ def test_openrouter_misses_are_statuses(name: str, body: Any, status: int, expec
     assert info.facts == ()
 
 
+NEW_LIST = {
+    "data": [
+        {"id": "anthropic/claude-sonnet-5.5", "context_length": 1000000},
+        {"id": "anthropic/claude-sonnet-5.5:batch", "context_length": 5},
+        {"id": "~anthropic/claude-sonnet-latest", "context_length": 6},
+        {"id": "openai/gpt-4o", "context_length": 128000},
+        {"id": "reseller/gpt-4o", "context_length": 7},
+    ]
+}
+
+
+@pytest.mark.parametrize("name", ["claude-sonnet-5-5", "claude-sonnet-5.5", "CLAUDE-Sonnet-5-5"])
+def test_hosted_id_without_a_publisher_is_found_by_its_name(name: str) -> None:
+    recorder = router(NEW_LIST)
+    info = explain(name, client=recorder.client())
+    assert info.parsed.kinds == ("api",)
+    assert info.lookups["openrouter"] == "ok"
+    assert facts_of(info) == {
+        "openrouter_id": ("anthropic/claude-sonnet-5.5", "openrouter"),
+        "context_length": (1000000, "openrouter"),
+    }
+    # Still only the whole list is fetched; the name is never sent.
+    assert recorder.urls == ["https://openrouter.ai/api/v1/models"]
+
+
+def test_publisher_id_is_found_across_version_spellings() -> None:
+    info = explain("anthropic/claude-sonnet-5-5", client=router(NEW_LIST).client())
+    assert facts_of(info)["openrouter_id"] == ("anthropic/claude-sonnet-5.5", "openrouter")
+    assert info.context_length == 1000000
+
+
+def test_exact_openrouter_id_gets_no_listed_as_row() -> None:
+    info = explain("anthropic/claude-sonnet-5.5", client=router(NEW_LIST).client())
+    assert facts_of(info) == {"context_length": (1000000, "openrouter")}
+
+
+def test_name_listed_under_two_publishers_is_not_picked() -> None:
+    info = explain("gpt-4o", client=router(NEW_LIST).client())
+    assert info.lookups["openrouter"] == "not_found"
+    assert info.facts == ()
+
+
+def test_mistyped_hosted_id_is_not_found() -> None:
+    info = explain("claude-sonnet-5-55", client=router(NEW_LIST).client())
+    assert info.lookups["openrouter"] == "not_found"
+
+
+def test_listed_as_row_is_shown() -> None:
+    from whatmodel.render import describe
+
+    text = describe(explain("claude-sonnet-5-5", client=router(NEW_LIST).client()))
+    assert "Listed as: anthropic/claude-sonnet-5.5 [OpenRouter]" in text
+
+
 def test_other_names_never_ask_openrouter() -> None:
     recorder = router()
-    for name in ("qwen3.5:4b", "bartowski/Qwen_Qwen3-30B-A3B-GGUF", "gpt-4o-2024-08-06"):
+    for name in ("qwen3.5:4b", "bartowski/Qwen_Qwen3-30B-A3B-GGUF", "llama3.1:8b"):
         info = explain(name, client=recorder.client())
         assert "openrouter" not in info.lookups
     assert all("openrouter.ai" not in url for url in recorder.urls)

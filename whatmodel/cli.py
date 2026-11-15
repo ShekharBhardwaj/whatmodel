@@ -28,6 +28,7 @@ from whatmodel.lookup import (
     explain,
     list_installed,
 )
+from whatmodel.parser import UnrecognizedName, check
 from whatmodel.render import (
     compare_rows,
     print_info,
@@ -217,6 +218,32 @@ def explain_command(
         verbose=verbose,
         brief=brief,
     )
+
+
+@app.command("check")
+def check_command(
+    names: Annotated[list[str], typer.Argument(help="Model names to check.")],
+) -> None:
+    """Exit with an error if a name has a part that is not recognized.
+
+    Reads the name only and makes no request. Use it in a script to catch a
+    mistyped model name: `whatmodel check "$MODEL" || exit 1`.
+    """
+    failed = False
+    for name in _expand(names):
+        try:
+            parsed = check(name)
+        except ValueError as error:
+            # An empty name gives a bare reason; an unrecognized one a full sentence.
+            known = isinstance(error, UnrecognizedName)
+            typer.echo(
+                f"whatmodel: {error}" if known else f"whatmodel: {name!r}: {error}", err=True
+            )
+            failed = True
+        else:
+            typer.echo(f"ok  {name}: {parsed}")
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @app.command("compare")

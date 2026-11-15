@@ -50,6 +50,7 @@ FACT_HEADINGS = {
     "quantization": "Compression",
     "architecture": "Architecture",
     "base_model": "Based on",
+    "openrouter_id": "Listed as",
     "context_length": "Context",
     "tools": "Tools",
     "vision": "Vision",

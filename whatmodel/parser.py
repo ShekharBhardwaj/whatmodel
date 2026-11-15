@@ -591,3 +591,30 @@ def parse(name: str) -> ParsedName:
         tokens=tuple(tokens),
         implied=tuple(_implied(structure, tokens, dictionary)),
     )
+
+
+class UnrecognizedName(ValueError):
+    """Raised by :func:`check` for a name with a part the dictionary does not know."""
+
+    def __init__(self, parsed: ParsedName, message: str) -> None:
+        super().__init__(message)
+        self.parsed = parsed
+        #: The parts that were not recognized. Empty when only the family is missing.
+        self.unknown = parsed.unknown
+
+
+def check(name: str) -> ParsedName:
+    """Read a name and raise :class:`UnrecognizedName` unless every part of it is known.
+
+    Meant as a guard before a model name is used, to catch a mistyped one
+    early. It reads the name only and makes no request, so passing does not
+    prove the model exists: it means no part of the name is unknown and a
+    model family was found.
+    """
+    parsed = parse(name)
+    if parsed.unknown:
+        parts = ", ".join(repr(text) for text in parsed.unknown)
+        raise UnrecognizedName(parsed, f"Check the model name {name!r}: {parts} not recognized.")
+    if parsed.family is None:
+        raise UnrecognizedName(parsed, f"Check the model name {name!r}: no model family found.")
+    return parsed

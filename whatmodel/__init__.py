@@ -6,7 +6,8 @@ Two layers:
 * :func:`explain` does the same and then looks up the facts a name cannot show.
 
 Also here: :func:`explain_many` for a list of names, :func:`compare` to line
-names up field by field, and :func:`meanings` to ask what one token means.
+names up field by field, :func:`meanings` to ask what one token means, and
+:func:`check` to stop a script on a mistyped name.
 
     >>> import whatmodel
     >>> print(whatmodel.parse("qwen3.5:4b"))
@@ -21,7 +22,7 @@ from importlib.metadata import version as _distribution_version
 from whatmodel.compare import ComparedField, Comparison, compare
 from whatmodel.dictionary import Reading, get_dictionary, normalize
 from whatmodel.lookup import Fact, ModelInfo, explain, explain_many
-from whatmodel.parser import Implied, ParsedName, Token, parse
+from whatmodel.parser import Implied, ParsedName, Token, UnrecognizedName, check, parse
 
 
 def meanings(token: str) -> tuple[Reading, ...]:
@@ -47,7 +48,9 @@ __all__ = [
     "ParsedName",
     "Reading",
     "Token",
+    "UnrecognizedName",
     "__version__",
+    "check",
     "compare",
     "explain",
     "explain_many",
