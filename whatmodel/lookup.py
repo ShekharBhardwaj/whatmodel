@@ -30,6 +30,7 @@ from whatmodel.parser import (
     KIND_OLLAMA,
     KIND_OPENROUTER,
     ParsedName,
+    check_name,
     parse,
 )
 
@@ -926,3 +927,69 @@ def explain(
     return ModelInfo(
         parsed, _merge([from_file, from_ollama, from_hub, from_router]), lookups, cached
     )
+
+
+class ModelNotFound(ValueError):
+    """Raised by :func:`check` when the place that lists such models does not list this one."""
+
+    def __init__(self, info: ModelInfo, message: str) -> None:
+        super().__init__(message)
+        self.info = info
+
+
+def _missing_from(info: ModelInfo) -> str | None:
+    """Where the name should be listed but is not, or ``None``.
+
+    Only a source that lists every model of its kind counts. A model missing
+    from the local Ollama is just not installed, which says nothing about the name.
+    """
+    lookups = info.lookups
+    if STATUS_OK in lookups.values():
+        return None
+    if lookups.get(SOURCE_OPENROUTER) == STATUS_NOT_FOUND:
+        return "it is not in OpenRouter's model list"
+    only_hub = info.parsed.kinds == (KIND_HUGGINGFACE,)
+    if only_hub and lookups.get(SOURCE_HUGGINGFACE) == STATUS_NOT_FOUND:
+        return "it was not found on Hugging Face"
+    return None
+
+
+def check(
+    name: str,
+    *,
+    offline: bool = False,
+    ollama_url: str = DEFAULT_OLLAMA_URL,
+    timeout: float | None = None,
+    client: httpx.Client | None = None,
+    cache_dir: Path | None = None,
+) -> ModelInfo:
+    """Explain a name, and raise if it looks mistyped. A guard to run before using a model.
+
+    Two things are checked, in this order:
+
+    1. Every part of the name is known and a model family was found. If not,
+       :class:`~whatmodel.parser.UnrecognizedName` is raised before any request.
+    2. The name is listed where such names are listed: OpenRouter's model list
+       for a hosted model ID, Hugging Face for a repo. If that source answers
+       and does not have it, :class:`ModelNotFound` is raised.
+
+    Both errors are ``ValueError``. A source that cannot be reached is not an
+    error: the name is then checked by its parts only, and ``lookups`` on the
+    result says so. ``offline=True`` skips the second check. The other
+    arguments are those of :func:`explain`.
+
+    Passing is not proof that a provider's own API accepts the exact spelling.
+    """
+    check_name(name)
+    info = explain(
+        name,
+        offline=offline,
+        ollama_url=ollama_url,
+        timeout=timeout,
+        client=client,
+        cache_dir=cache_dir,
+    )
+    missing = _missing_from(info)
+    if missing is not None:
+        raise ModelNotFound(info, f"Check the model name {name!r}: {missing}.")
+    return info

@@ -128,7 +128,7 @@ whatmodel <name>              explain one name
 whatmodel <name> <name>...    explain several
 whatmodel -                   read names from standard input, one per line
 whatmodel compare <a> <b>     put names side by side and mark what differs
-whatmodel check <name>        exit with an error if part of a name is not recognized
+whatmodel check <name>        exit with an error if a name looks mistyped
 whatmodel list                explain every model installed in local Ollama
 whatmodel tokens              print the token dictionary
 whatmodel mcp                 run as an MCP server for AI assistants
@@ -320,12 +320,16 @@ parsed.family_roles  # {'qwen': 'model', 'claude': 'source'} when a name has two
 To stop a script before it runs with a mistyped model name:
 
 ```python
-whatmodel.check("claude-sonnet-5-5")  # returns the parsed name
+info = whatmodel.check("claude-sonnet-5-5")  # explains it, and raises if it looks mistyped
 whatmodel.check("claude-sonet-5-5")
 # whatmodel.UnrecognizedName: Check the model name 'claude-sonet-5-5': 'sonet-5-5' not recognized.
+whatmodel.check("claude-sonnet-5_5")
+# whatmodel.ModelNotFound: Check the model name 'claude-sonnet-5_5': it is not in OpenRouter's model list.
 ```
 
-`check()` reads the name only and makes no request. Passing means no part of the name is unknown; it does not prove the model exists. `UnrecognizedName` is a `ValueError`, and its `unknown` holds the parts that were not recognized. From a shell, `whatmodel check "$MODEL" || exit 1` does the same.
+`check()` does two things. First it reads the name and raises `UnrecognizedName` if a part is unknown, before any request. Then it looks the name up and raises `ModelNotFound` if the place that lists such names does not have it: OpenRouter for a hosted model ID, Hugging Face for a repo link. Both errors are `ValueError`. It returns what `explain()` returns.
+
+A model that is only missing from your local Ollama is not an error, and neither is a source that cannot be reached: the name is then checked by its parts alone. `check(name, offline=True)` skips the lookup. Passing does not prove a provider's own API accepts the exact spelling. From a shell, `whatmodel check "$MODEL" || exit 1` does the same.
 
 `import whatmodel` is light: the HTTP and table libraries load only when a lookup or a table needs them.
 

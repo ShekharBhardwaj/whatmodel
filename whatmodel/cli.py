@@ -24,11 +24,13 @@ from whatmodel.dictionary import get_dictionary
 from whatmodel.lookup import (
     DEFAULT_OLLAMA_URL,
     ModelInfo,
+    ModelNotFound,
     OllamaUnavailableError,
+    check,
     explain,
     list_installed,
 )
-from whatmodel.parser import UnrecognizedName, check
+from whatmodel.parser import UnrecognizedName
 from whatmodel.render import (
     compare_rows,
     print_info,
@@ -223,25 +225,34 @@ def explain_command(
 @app.command("check")
 def check_command(
     names: Annotated[list[str], typer.Argument(help="Model names to check.")],
+    offline: OfflineOption = False,
+    ollama_url: OllamaUrlOption = DEFAULT_OLLAMA_URL,
+    no_cache: NoCacheOption = False,
 ) -> None:
-    """Exit with an error if a name has a part that is not recognized.
+    """Exit with an error if a name looks mistyped.
 
-    Reads the name only and makes no request. Use it in a script to catch a
-    mistyped model name: `whatmodel check "$MODEL" || exit 1`.
+    A name fails when a part of it is not recognized, or when it is missing
+    from the place that lists such models (OpenRouter for hosted model IDs,
+    Hugging Face for repos). With --offline only the parts are checked. Use it
+    in a script: `whatmodel check "$MODEL" || exit 1`.
     """
     failed = False
     for name in _expand(names):
         try:
-            parsed = check(name)
-        except ValueError as error:
-            # An empty name gives a bare reason; an unrecognized one a full sentence.
-            known = isinstance(error, UnrecognizedName)
-            typer.echo(
-                f"whatmodel: {error}" if known else f"whatmodel: {name!r}: {error}", err=True
+            info = check(
+                name,
+                offline=offline,
+                ollama_url=ollama_url,
+                cache_dir=_cache_dir(offline, no_cache),
             )
+        except (UnrecognizedName, ModelNotFound) as error:
+            typer.echo(f"whatmodel: {error}", err=True)
+            failed = True
+        except ValueError as error:  # no name to read at all
+            typer.echo(f"whatmodel: {name!r}: {error}", err=True)
             failed = True
         else:
-            typer.echo(f"ok  {name}: {parsed}")
+            typer.echo(f"ok  {name}: {info.summary}")
     if failed:
         raise typer.Exit(code=1)
 

@@ -520,12 +520,12 @@ def test_api_and_openrouter_names_say_what_they_are() -> None:
 
 
 def test_check_passes_a_known_name() -> None:
-    result = runner.invoke(app, ["check", "claude-sonnet-5-5"])
+    result = runner.invoke(app, ["check", "--offline", "claude-sonnet-5-5"])
     assert result.exit_code == 0
     assert result.output.startswith("ok  claude-sonnet-5-5: Claude (Anthropic); 5.5")
 
 
 def test_check_fails_on_an_unknown_part() -> None:
-    result = runner.invoke(app, ["check", "claude-sonnet-5-5", "claude-sonet-5-5"])
+    result = runner.invoke(app, ["check", "--offline", "claude-sonnet-5-5", "claude-sonet-5-5"])
     assert result.exit_code == 1
     assert "'sonet-5-5' not recognized." in result.output

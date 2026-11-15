@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from whatmodel import explain
+from whatmodel import ModelNotFound, UnrecognizedName, check, explain
 from whatmodel.lookup import (
     OllamaUnavailableError,
     format_bytes,
@@ -605,6 +605,44 @@ def test_listed_as_row_is_shown() -> None:
 
     text = describe(explain("claude-sonnet-5-5", client=router(NEW_LIST).client()))
     assert "Listed as: anthropic/claude-sonnet-5.5 [OpenRouter]" in text
+
+
+def test_check_returns_the_looked_up_facts() -> None:
+    info = check("claude-sonnet-5-5", client=router(NEW_LIST).client())
+    assert info.context_length == 1000000
+
+
+def test_check_raises_when_openrouter_does_not_list_the_name() -> None:
+    with pytest.raises(ModelNotFound, match="not in OpenRouter's model list") as caught:
+        check("claude-sonnet-5_5", client=router(NEW_LIST).client())
+    assert caught.value.info.name == "claude-sonnet-5_5"
+    assert isinstance(caught.value, ValueError)
+
+
+def test_check_stops_on_an_unknown_part_before_any_request() -> None:
+    recorder = router(NEW_LIST)
+    with pytest.raises(UnrecognizedName):
+        check("claude-sonet-5-5", client=recorder.client())
+    assert recorder.urls == []
+
+
+def test_check_passes_when_the_source_cannot_be_reached() -> None:
+    info = check("claude-sonnet-5_5", client=router({}, 500).client())
+    assert info.lookups["openrouter"] == "error"
+
+
+def test_check_offline_only_reads_the_name() -> None:
+    assert check("claude-sonnet-5_5", offline=True).lookups["ollama"] == "skipped"
+
+
+def test_check_does_not_fail_a_model_that_is_just_not_installed() -> None:
+    info = check("qwen3.5:4b", client=router(NEW_LIST).client())
+    assert info.lookups["ollama"] == "not_found"
+
+
+def test_check_raises_for_a_hugging_face_link_that_does_not_exist() -> None:
+    with pytest.raises(ModelNotFound, match="not found on Hugging Face"):
+        check("https://huggingface.co/Qwen/Qwen3-8B", client=router(NEW_LIST).client())
 
 
 def test_other_names_never_ask_openrouter() -> None:

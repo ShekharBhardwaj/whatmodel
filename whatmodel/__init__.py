@@ -21,8 +21,8 @@ from importlib.metadata import version as _distribution_version
 
 from whatmodel.compare import ComparedField, Comparison, compare
 from whatmodel.dictionary import Reading, get_dictionary, normalize
-from whatmodel.lookup import Fact, ModelInfo, explain, explain_many
-from whatmodel.parser import Implied, ParsedName, Token, UnrecognizedName, check, parse
+from whatmodel.lookup import Fact, ModelInfo, ModelNotFound, check, explain, explain_many
+from whatmodel.parser import Implied, ParsedName, Token, UnrecognizedName, parse
 
 
 def meanings(token: str) -> tuple[Reading, ...]:
@@ -45,6 +45,7 @@ __all__ = [
     "Fact",
     "Implied",
     "ModelInfo",
+    "ModelNotFound",
     "ParsedName",
     "Reading",
     "Token",

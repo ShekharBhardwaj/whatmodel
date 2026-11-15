@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - About 45 more tokens, each checked against the publisher's own page: families such as Ornith, MiMo, Flint, Clef, Laguna and Bonsai; `mtp`, `dspark` and `dflash`; the Nemotron tiers; `gsq-rco` and `ternary`.
 - Hosted API IDs with no publisher (`claude-sonnet-5-5`, `gpt-4o`) are looked up in OpenRouter's model list too, across the dot and dash spellings of a version. A **Listed as** row shows which listed model answered.
 - `whatmodel.check(name)` and `whatmodel check <name>` fail on a name with a part that is not recognized, to catch a mistyped model name before a script runs.
+- `check()` now also looks the name up, and raises `ModelNotFound` when OpenRouter (for a hosted model ID) or Hugging Face (for a repo link) does not list it. It returns what `explain()` returns, where 0.0.8 returned the parsed name. `offline=True` keeps it to the name.
 - `whatmodel mcp` runs as a Model Context Protocol server with two tools, for AI assistants. It supports both the 2026-07-28 protocol and the older handshake, and adds no dependency.
 - OpenRouter IDs and hosted API IDs with a publisher are looked up in OpenRouter's public model list: context length, vision, tools and thinking.
 - A version number is read when it follows a tier or tuning word (`devstral-small-2`, `claude-opus-4-5`), or a size when it has a decimal point (`8b-2.6`).

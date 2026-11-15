@@ -171,12 +171,14 @@ def test_explain_many_offline_makes_no_client() -> None:
 
 
 def test_check_returns_the_parsed_name() -> None:
-    assert whatmodel.check("claude-sonnet-5-5").family == "claude"
+    info = whatmodel.check("claude-sonnet-5-5", offline=True)
+    assert isinstance(info, ModelInfo)
+    assert info.family == "claude"
 
 
 def test_check_raises_on_an_unknown_part() -> None:
     with pytest.raises(whatmodel.UnrecognizedName) as caught:
-        whatmodel.check("claude-sonet-5-5")
+        whatmodel.check("claude-sonet-5-5")  # raises before any request
     assert caught.value.unknown == ("sonet-5-5",)
     assert str(caught.value) == (
         "Check the model name 'claude-sonet-5-5': 'sonet-5-5' not recognized."
@@ -186,5 +188,5 @@ def test_check_raises_on_an_unknown_part() -> None:
 
 def test_check_raises_when_no_family_is_found() -> None:
     with pytest.raises(whatmodel.UnrecognizedName, match="no model family found") as caught:
-        whatmodel.check("8b")
+        whatmodel.check("8b", offline=True)
     assert caught.value.unknown == ()
